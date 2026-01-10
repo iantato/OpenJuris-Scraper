@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Optional
 
 from utils.constants import MONTHS
-from models.directory import HTMLDirectory
+from models.directory import Directory
 
 def _get_documents_path() -> Path:
     """Get the Documents directory for any os/system.
@@ -50,7 +50,7 @@ def get_data_dir() -> Path:
 
     return data_dir
 
-def get_files_dir(source: str, category: str, file_type: str, start_year: Optional[int] = 1946, end_year: Optional[int] = 2025) -> list[HTMLDirectory]:
+def get_files_dir(source: str, category: str, file_type: str, start_year: Optional[int] = 1946, end_year: Optional[int] = 2025) -> list[Directory]:
     """Get the HTML directory.
     Also creates all the folders for the HTMLs if not created yet.
 
@@ -76,7 +76,7 @@ def get_files_dir(source: str, category: str, file_type: str, start_year: Option
             month_dir = year_dir / month
             month_dir.mkdir(parents=True, exist_ok=True)
 
-            all_dir.append(HTMLDirectory(
+            all_dir.append(Directory(
                 month=month,
                 year=year,
                 source=source,
