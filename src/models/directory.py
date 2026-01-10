@@ -6,11 +6,11 @@ class HTMLDirectory:
     month: str
     year: str
     source: str
-    html_directory: Path
+    directory: Path
 
 @dataclass
 class MDDirectory:
     month: str
     year: str
     source: str
-    html_directory: Path
+    directory: Path
