@@ -98,6 +98,7 @@ def get_file_dir(source: str, category: str, file_type: str, month: str, year: i
     Returns:
         Directory: The directory model for the specified path.
     """
+
     html_dir = get_data_dir() / source / file_type / category / str(year) / month
 
     return Directory(
