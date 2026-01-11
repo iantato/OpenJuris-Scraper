@@ -84,3 +84,25 @@ def get_files_dir(source: str, category: str, file_type: str, start_year: Option
             ))
 
     return all_dir
+
+def get_file_dir(source: str, category: str, file_type: str, month: str, year: int) -> Directory:
+    """Get a specific file directory without iterating through all directories.
+
+    Args:
+        source (str): The website that the file has come from.
+        category (str): The category of file (e.g. Republic Act).
+        file_type (str): The type of the file (e.g. html, markdown).
+        year (int): The specific year.
+        month (str): The specific month name.
+
+    Returns:
+        Directory: The directory model for the specified path.
+    """
+    html_dir = get_data_dir() / source / file_type / category / str(year) / month
+
+    return Directory(
+        month=month,
+        year=year,
+        source=source,
+        directory=html_dir
+    )
