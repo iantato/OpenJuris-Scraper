@@ -8,12 +8,13 @@ from bs4 import BeautifulSoup
 
 from utils.https import request_html
 from storage.file_system import get_files_dir
+from utils.constants import SUPREME_COURT_TITLE
 from crawler.elibrary.constants import BASE_URL, PAGES
 
 class SupremeCourtELibraryCrawler:
 
     def __init__(self, frequency: Optional[int] = 1):
-        self.title = "supreme_court_elibrary"
+        self.title = SUPREME_COURT_TITLE
         self.sleep_freuqency = frequency
 
     def _get_urls(self, soup: BeautifulSoup) -> list[str]:
