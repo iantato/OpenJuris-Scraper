@@ -57,11 +57,56 @@ def _normalize_ellipsis(text: str) -> str:
 def _normalize_space(text: str) -> str:
     return re.sub(r" +", " ", text)
 
+def _fix_missing_spaces(text: str) -> str:
+    # Space after period + letter (sentence boundaries)
+    text = re.sub(r'\.([A-Za-z])', r'. \1', text)
+    # Space after comma + letter
+    text = re.sub(r',([A-Za-z])', r', \1', text)
+    # Space after semicolon + letter
+    text = re.sub(r';([A-Za-z])', r'; \1', text)
+    # Space after colon + letter (but not for time like 10:30)
+    text = re.sub(r':([A-Za-z])', r': \1', text)
+    # Space after closing paren + letter
+    text = re.sub(r'\)([A-Za-z])', r') \1', text)
+
+    return text
+
+def _fix_spaces_before_punctuation(text: str) -> str:
+    # Remove space before colon: "funds : And" -> "funds: And"
+    text = re.sub(r'\s+:', ':', text)
+    # Remove space before semicolon: "text ; more" -> "text; more"
+    text = re.sub(r'\s+;', ';', text)
+    # Remove space before comma: "word , next" -> "word, next"
+    text = re.sub(r'\s+,', ',', text)
+    # Remove space before period: "end ." -> "end."
+    text = re.sub(r'\s+\.', '.', text)
+    # Remove space before question mark: "what ?" -> "what?"
+    text = re.sub(r'\s+\?', '?', text)
+    # Remove space before exclamation: "wow !" -> "wow!"
+    text = re.sub(r'\s+!', '!', text)
+
+    return text
+
 def clean_text(text: str) -> None:
     text = ftfy.fix_text(text)
     text = _replace_unicode(text)
+    text = _fix_spaces_before_punctuation(text)
+    text = _fix_missing_spaces(text)
     text = _normalize_ellipsis(text)
     text = _normalize_space(text)
     text = _fix_broken_list_markers(text)
 
     return text
+
+def clean_table(table) -> None:
+    new_table = []
+
+    for row in table:
+        # Clean each cell but keep empty cells to preserve column alignment
+        cleaned_row = [clean_text(cell) if cell else "" for cell in row]
+
+        # Only skip completely empty rows (all cells empty)
+        if any(cell.strip() for cell in cleaned_row):
+            new_table.append(cleaned_row)
+
+    return new_table
