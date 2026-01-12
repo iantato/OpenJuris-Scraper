@@ -45,12 +45,22 @@ def _fix_broken_list_markers(text: str) -> str:
 
     return text
 
+def _normalize_ellipsis(text: str) -> str:
+    # Match dots separated by spaces: ". . . . ." -> "..."
+    text = re.sub(r'(\.\s*){3,}', '...', text)
+
+   # Multiple consecutive dots: "......" -> "..."
+    text = re.sub(r'\.{3,}', '...', text)
+
+    return text
+
 def _normalize_space(text: str) -> str:
     return re.sub(r" +", " ", text)
 
 def clean_text(text: str) -> None:
     text = ftfy.fix_text(text)
     text = _replace_unicode(text)
+    text = _normalize_ellipsis(text)
     text = _normalize_space(text)
     text = _fix_broken_list_markers(text)
 
