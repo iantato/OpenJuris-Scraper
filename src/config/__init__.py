@@ -3,9 +3,10 @@ from pydantic_settings import SettingsConfigDict
 
 from enums.app_environment import AppEnvironment
 
+from config.scraper import ScraperSettings
 from config.database import DatabaseSettings
 
-class Settings(DatabaseSettings):
+class Settings(DatabaseSettings, ScraperSettings):
     """
     Main Application Settings.
     """
