@@ -4,6 +4,8 @@ from typing import Optional, TYPE_CHECKING
 from uuid6 import uuid7
 from sqlmodel import SQLModel, Field, Relationship
 
+from enums.section_type import SectionType
+
 if TYPE_CHECKING:
     from models.document import Document
     from models.document_part import DocumentPart
@@ -21,7 +23,7 @@ class DocumentPart(SQLModel, table=True):
     # section paragraph.
     parent_id: Optional[UUID] = Field(foreign_key="document_parts.id", nullable=True)
 
-    section_type: str                                           # e.g. "Section", "EnactingClause", "Ruling", etc.
+    section_type: SectionType                                   # e.g. "Section", "EnactingClause", "Ruling", etc.
     label: Optional[str] = Field(default=None, nullable=True)   # e.g. "Secton 1" or "Article III".
 
     content_text: str           # Plain text of the content.
