@@ -6,6 +6,7 @@ from uuid6 import uuid7
 from sqlmodel import SQLModel, Field, Relationship
 
 from enums.source_type import SourceType
+from enums.source_name import SourceName
 
 if TYPE_CHECKING:
     from models.document import Document
@@ -15,7 +16,7 @@ class Source(SQLModel, table=True):
     __tablename__ = "sources"
 
     id: UUID = Field(default_factory=uuid7, primary_key=True)
-    name: str = Field(unique=True)              # e.g. "Supreme Court E-Library"
+    name: SourceName = Field(unique=True)       # e.g. "Supreme Court E-Library"
     short_code: str = Field(unique=True)        # e.g. "SC-ELIB"
 
     base_url: str       # e.g. "https://elibrary.judiciary.gov.ph"
