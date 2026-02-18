@@ -1,11 +1,12 @@
-from uuid import UUID, uuid7
+from uuid import UUID
 from typing import Optional, TYPE_CHECKING
 
+from uuid6 import uuid7
 from sqlmodel import SQLModel, Field, Relationship
 
 if TYPE_CHECKING:
-    from src.models.documents import Document
-    from src.models.document_part import DocumentPart
+    from models.document import Document
+    from models.document_part import DocumentPart
 
 class DocumentPart(SQLModel, table=True):
     """Sections of the document"""

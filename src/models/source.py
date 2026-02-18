@@ -1,14 +1,14 @@
+from uuid import UUID
 from datetime import datetime
 from typing import Optional, TYPE_CHECKING
 
-from uuid import UUID, uuid7
-
+from uuid6 import uuid7
 from sqlmodel import SQLModel, Field, Relationship
 
-from src.enums.source_type import SourceType
+from enums.source_type import SourceType
 
 if TYPE_CHECKING:
-    from src.models.documents import Document
+    from models.document import Document
 
 class Source(SQLModel, table=True):
     """Registry of where we get data (e.g., Lawphil, SC Library)"""

@@ -1,17 +1,20 @@
+from uuid import UUID
 from datetime import date, datetime
 from typing import Optional, Any, TYPE_CHECKING
 
-from uuid import UUID, uuid7
+from uuid6 import uuid7
 from sqlmodel import SQLModel, Column, JSON, Field, Relationship
 
-from src.enums.document_category import DocumentCategory
-from src.enums.document_type import DocumentType
+from enums.document_category import DocumentCategory
+from enums.document_type import DocumentType
+
+from models.subject_link import DocumentSubjectLink
 
 if TYPE_CHECKING:
-    from src.models.source import Source
-    from src.models.subject import Subject, DocumentSubjectLink
-    from src.models.document_part import DocumentPart
-    from src.models.document_relation import DocumentRelation
+    from models.source import Source
+    from models.subject import Subject, DocumentSubjectLink
+    from models.document_part import DocumentPart
+    from models.document_relation import DocumentRelation
 
 class Document(SQLModel, table=True):
     """The Master Registry"""

@@ -1,10 +1,11 @@
+from uuid import UUID
 from typing import Optional
-from uuid import UUID, uuid7
 from datetime import datetime
 
+from uuid6 import uuid7
 from sqlmodel import SQLModel, Field
 
-from src.enums.relation_type import RelationType
+from enums.relation_type import RelationType
 
 class DocumentRelation(SQLModel, table=True):
     """The universal link between documents"""
