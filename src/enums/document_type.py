@@ -19,7 +19,12 @@ class DocumentType(str, Enum):
     PROCLAMATION = "Proclamation"
     GENERAL_ORDER = "General Order"
     SPECIAL_ORDER = "Special Order"
+    LETTER_OF_IMPLEMENTATION = "Letter of Implementation"
+    LETTER_OF_INSTRUCTION = "Letter of Instruction"
 
     # --- Jurisprudence ---
     DECISION = "Decision"
     RESOLUTION = "Resolution"
+
+    # --- Court Issuances ---
+    RULES_OF_COURT = "Rules of Court"
