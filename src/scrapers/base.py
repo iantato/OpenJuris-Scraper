@@ -67,10 +67,22 @@ class BaseScraper(ABC):
         return self.urls
 
     @abstractmethod
-    async def scrape_document(self, url: str) -> Optional[ScrapedDocument]:
+    async def scrape_document(self, url: str, doc_type: DocumentType) -> Optional[ScrapedDocument]:
         ...
 
     async def _extract_urls(self, soup: BeautifulSoup) -> AsyncIterator[str]:
+        """
+        Extract all the available urls in soup.
+
+        Args:
+            soup (BeautifulSoup): BeautifulSoup object representing the parsed HTML page.
+
+        Yields:
+            str: Absolute URLs resolved with urljoin(self.base_url, href).
+                 Only URLs that start with self.base_url are returned (other
+                 schemes and external links are skipped).
+        """
+
         for link in soup.find_all("a", href=True):
             href = link["href"]
 
@@ -82,18 +94,25 @@ class BaseScraper(ABC):
             yield full_url
 
     async def run(self) -> AsyncIterator[ScrapedDocument]:
+        """
+        Crawl configured index pages and yield parsed documents.
 
+        Yields:
+            AsyncIterator[ScrapedDocument]: documents ready for persistence or further processing.
+        """
         async with self.http_client:
             deep_links = self._get_deep_links(self.ctx.target_document_types)
 
-            for _, url in deep_links.items():
+            for doc_type, url in deep_links.items():
                 full_url = urljoin(self.base_url, url)
 
                 html = await self.http_client.get_bytes(full_url)
                 soup = BeautifulSoup(html, "html.parser")
 
+                # Using the HTML page given to the crawler, we get all the
+                # url available and scrape the documents from there.
                 async for doc in self.crawl(soup):
-                    document = await self.scrape_document(doc)
+                    document = await self.scrape_document(doc, doc_type)
 
                     if document:
                         yield document

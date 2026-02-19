@@ -11,6 +11,8 @@ from enums.source_url import SourceBaseURL
 from enums.source_name import SourceName
 from enums.document_type import DocumentType
 
+from scrapers.lawphil.parsers.statute_parser import LawphilStatuteParser
+
 from scrapers.lawphil.constants import LAWPHIL_PATHS
 
 from config import Settings
@@ -20,6 +22,7 @@ class LawphilScraper(BaseScraper):
     def __init__(self, settings: Settings, ctx: ScraperContext):
         super().__init__(settings, ctx)
         self.ctx = ctx
+        self.statute_parser = LawphilStatuteParser()
 
     @property
     def source_name(self) -> SourceName:
@@ -36,7 +39,7 @@ class LawphilScraper(BaseScraper):
         """URL registry for this scraper. Must be defined by subclass."""
         return LAWPHIL_PATHS
 
-    async def crawl(self, soup: BeautifulSoup) -> None:
+    async def crawl(self, soup: BeautifulSoup) -> AsyncIterator[str]:
         async for statute in self._extract_urls(soup.find("table", id="s-menu")):
             html = await self.http_client.get_bytes(statute)
             soup = BeautifulSoup(html, "html.parser")
@@ -44,5 +47,13 @@ class LawphilScraper(BaseScraper):
 
             yield statute
 
-    async def scrape_document(self, doc_url: str) -> Optional[ScrapedDocument]:
+    async def scrape_document(self, doc_url: str, doc_type: DocumentType) -> Optional[ScrapedDocument]:
         html = await self.http_client.get_bytes(doc_url)
+
+        if "/statutes/" in doc_url:
+            document = self.statute_parser.parse(html, doc_url, doc_type)
+            document.metadata_fields["source_name"] = self.source_name.value
+
+            return document
+
+        return None
