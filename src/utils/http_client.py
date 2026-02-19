@@ -66,6 +66,16 @@ class HTTPClient:
 
             raise last_error or ScraperException(f"Failed to fetch {url}")
 
+    async def get_bytes(self, url: str, retries: Optional[int] = None) -> bytes:
+        """Return raw bytes, let caller handle encoding."""
+        async with self._semaphore:
+            await self._rate_limit()
+            session = await self._get_session()
+
+            async with session.get(url) as response:
+                response.raise_for_status()
+                return await response.read()
+
     async def close(self):
         """Close the HTTP session"""
         if self._session and not self._session.closed:
