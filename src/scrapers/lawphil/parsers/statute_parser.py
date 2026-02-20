@@ -1,5 +1,6 @@
 import re
 from typing import Optional
+from datetime import date
 
 from bs4 import BeautifulSoup, Tag
 
@@ -12,28 +13,46 @@ from enums.document_type import DocumentType
 from enums.document_category import DocumentCategory
 
 from scrapers.lawphil.constants import STATUTE_PATTERNS
+from transformers.html_to_markdown import HtmlToMarkdown
+from transformers.markdown_transformer import MarkdownTransformer
+
 
 class LawphilStatuteParser:
 
     def __init__(self):
+        # Initialize converters
+        self.html_converter = HtmlToMarkdown()
+        self.markdown_transformer = MarkdownTransformer()
+
         self._title_terminators = re.compile(
             r'(?:'
-            r'(?:^|\n)\s*(?:SEC(?:TION)?\.?\s*\d+)'  # Section 1, SEC. 1, etc.
-            r'|(?:^|\n)\s*(?:ART(?:ICLE)?\.?\s*[IVXLCDM\d]+)'  # Article I, ART. 1
-            r'|(?:^|\n)\s*(?:CHAPTER\s*[IVXLCDM\d]+)'  # Chapter I
-            r'|(?:^|\n)\s*PRELIMINARY\s+TITLE'  # Preliminary Title
-            r'|(?:^|\n)\s*GENERAL\s+PROVISIONS'  # General Provisions
-            r'|(?:^|\n)\s*Be\s+it\s+enacted'  # Enacting clause
-            r'|(?:^|\n)\s*WHEREAS'  # Whereas clauses (for EOs, PDs)
+            r'(?:^|\n)\s*(?:SEC(?:TION)?\.?\s*\d+)'
+            r'|(?:^|\n)\s*(?:ART(?:ICLE)?\.?\s*[IVXLCDM\d]+)'
+            r'|(?:^|\n)\s*(?:CHAPTER\s*[IVXLCDM\d]+)'
+            r'|(?:^|\n)\s*PRELIMINARY\s+TITLE'
+            r'|(?:^|\n)\s*GENERAL\s+PROVISIONS'
+            r'|(?:^|\n)\s*Be\s+it\s+enacted'
+            r'|(?:^|\n)\s*WHEREAS'
             r')',
             re.IGNORECASE | re.MULTILINE
         )
 
-        # Section/Article patterns (shared across all statute types)
+        self._header_pattern = re.compile(
+            r'^\s*\[?\s*(?:REPUBLIC\s+ACT|PRESIDENTIAL\s+DECREE|EXECUTIVE\s+ORDER|'
+            r'BATAS\s+PAMBANSA|COMMONWEALTH\s+ACT|ACT)\s+NO\.?\s*\d+',
+            re.IGNORECASE
+        )
+
+        self._enacting_clause_pattern = re.compile(
+            r'Be\s+it\s+enacted\s+by\s+the\s+Senate\s+and\s+House\s+of\s+Representatives',
+            re.IGNORECASE
+        )
+
         self._section_pattern = re.compile(
             r'^(?:SEC(?:TION)?\.?\s*(\d+)\.?\s*[-–—.]?\s*(.*))',
             re.IGNORECASE
         )
+
         self._article_pattern = re.compile(
             r'^(?:ART(?:ICLE)?\.?\s*([IVXLCDM\d]+)\.?\s*[-–—.]?\s*(.*))',
             re.IGNORECASE
@@ -46,38 +65,32 @@ class LawphilStatuteParser:
         self._sort_counter = 0
 
     def parse(self, html: str, url: str, doc_type: DocumentType) -> Optional[ScrapedDocument]:
-        """
-        Parse a statute document and return a ScrapedDocument.
+        """Parse a LawPhil statute page."""
+        self._reset_sort_counter()
 
-        Args:
-            html: Raw HTML content
-            url: Source URL
-            doc_type: Document type (e.g., DocumentType.REPUBLIC_ACT)
+        soup = BeautifulSoup(html, "html.parser")
 
-        Returns:
-            ScrapedDocument or None if parsing fails
-        """
-        soup = BeautifulSoup(html, "lxml")
-        self._sort_counter = 0  # Reset counter for each document
-
-        pattern_config = STATUTE_PATTERNS.get(doc_type)
-        if not pattern_config:
+        config = self._get_pattern_for_type(doc_type)
+        if not config:
             return None
 
-        # Extract statute number
-        statute_info = self._extract_statute_number(soup, pattern_config)
+        statute_info = self._extract_info(soup, config)
         if not statute_info:
             return None
 
-        # Extract other components
-        title = self._extract_title(soup, pattern_config)
+        title = self._extract_title(soup, config)
+        dates = self._extract_dates(soup, config)
         parts = self._extract_body_parts(soup)
-        dates = self._extract_dates(soup, pattern_config)
-
-        # Determine document category based on type
         category = self._get_category(doc_type)
 
-        return ScrapedDocument(
+        # Convert date objects to ISO strings for JSON storage in metadata_fields
+        dates_raw_json = {
+            key: val.isoformat() if isinstance(val, date) else val
+            for key, val in dates.items()
+        }
+
+        # Create the scraped document
+        document = ScrapedDocument(
             canonical_citation=statute_info,
             title=title or statute_info,
             category=category,
@@ -87,11 +100,41 @@ class LawphilStatuteParser:
             date_effectivity=dates.get('effectivity'),
             metadata_fields={
                 'statute_number': self._extract_number(statute_info),
-                'dates_raw': dates,
+                'dates_raw': dates_raw_json,  # Use JSON-serializable version
             },
             parts=parts,
             raw_html=html
         )
+
+        # Generate full markdown representation using the transformer
+        document.content_markdown = self.markdown_transformer.transform(document)
+
+        return document
+
+    def _get_pattern_for_type(self, doc_type: DocumentType) -> Optional[StatutePattern]:
+        """Get the pattern configuration for a document type."""
+        return STATUTE_PATTERNS.get(doc_type)
+
+    def _extract_info(self, soup: BeautifulSoup, config: StatutePattern) -> Optional[str]:
+        """Extract canonical citation (e.g., 'Republic Act No. 1')."""
+        full_text = soup.get_text()
+
+        # Try title first
+        if soup.title:
+            for pattern_str in config.patterns:
+                match = re.search(pattern_str, soup.title.get_text(), re.IGNORECASE)
+                if match:
+                    number = match.group(2)
+                    return f"{config.display_name} No. {number}"
+
+        # Try patterns in body
+        for pattern_str in config.patterns:
+            match = re.search(pattern_str, full_text[:2000], re.IGNORECASE)
+            if match:
+                number = match.group(2)
+                return f"{config.display_name} No. {number}"
+
+        return None
 
     def _get_category(self, doc_type: DocumentType) -> DocumentCategory:
         """Map document type to category."""
@@ -120,29 +163,6 @@ class LawphilStatuteParser:
         else:
             return DocumentCategory.STATUTE  # Default
 
-    def _extract_statute_number(
-        self, soup: BeautifulSoup, config: StatutePattern
-    ) -> Optional[str]:
-        """Extract canonical citation (e.g., 'Republic Act No. 1')."""
-        full_text = soup.get_text()
-
-        # Try title first
-        if soup.title:
-            for pattern_str in config.patterns:
-                match = re.search(pattern_str, soup.title.get_text(), re.IGNORECASE)
-                if match:
-                    number = match.group(2)
-                    return f"{config.display_name} No. {number}"
-
-        # Try patterns in body
-        for pattern_str in config.patterns:
-            match = re.search(pattern_str, full_text[:2000], re.IGNORECASE)
-            if match:
-                number = match.group(2)
-                return f"{config.display_name} No. {number}"
-
-        return None
-
     def _extract_number(self, citation: str) -> Optional[str]:
         """Extract just the number from citation."""
         match = re.search(r'No\.\s*(\d+)', citation)
@@ -153,13 +173,7 @@ class LawphilStatuteParser:
         soup: BeautifulSoup,
         pattern_config: StatutePattern
     ) -> Optional[str]:
-        """
-        Extract document title.
-
-        Title typically:
-        - Starts with "AN ACT", "DECLARING", etc.
-        - Ends before "Section 1", "Article I", or similar structural markers
-        """
+        """Extract document title."""
         if pattern_config.title_prefixes:
             prefix_pattern = "|".join(re.escape(p) for p in pattern_config.title_prefixes)
         else:
@@ -189,11 +203,9 @@ class LawphilStatuteParser:
                     terminator_match = self._title_terminators.search(title_text)
 
                     if terminator_match:
-                        # Title is everything before the terminator
                         title = title_text[:terminator_match.start()]
                     else:
                         # No terminator found, try to find a reasonable end
-                        # Look for double newline or excessive whitespace
                         double_newline = re.search(r'\n\s*\n', title_text)
                         if double_newline and double_newline.start() < 1000:
                             title = title_text[:double_newline.start()]
@@ -203,8 +215,6 @@ class LawphilStatuteParser:
 
                     # Clean up whitespace
                     title = ' '.join(title.split())
-
-                    # Remove trailing punctuation issues
                     title = title.rstrip('.,;: ')
 
                     if len(title) > 500:
@@ -217,25 +227,56 @@ class LawphilStatuteParser:
             text = tag.get_text(strip=True)
             for prefix in pattern_config.title_prefixes:
                 if text.upper().startswith(prefix):
-                    # Check this element doesn't contain section markers
                     if not self._title_terminators.search(text):
                         return ' '.join(text.split())
 
         return None
 
     def _next_sort_order(self) -> int:
-        """Get next sort order and increment counter."""
-        order = self._sort_counter
+        """Get next sort order number."""
         self._sort_counter += 1
-        return order
+        return self._sort_counter
+
+    def _reset_sort_counter(self):
+        """Reset sort counter for new document."""
+        self._sort_counter = 0
+
+    def _element_to_markdown(self, element: Tag) -> str:
+        """Convert an HTML element to Markdown."""
+        if element is None:
+            return ""
+        return self.html_converter.convert_element(element)
+
+    def _html_to_markdown(self, html: str) -> str:
+        """Convert HTML string to Markdown."""
+        if not html:
+            return ""
+        return self.html_converter.convert(html)
+
+    def _get_text_with_formatting(self, element: Tag) -> tuple[str, str]:
+        """
+        Extract both plain text and markdown from an element.
+
+        Returns:
+            Tuple of (plain_text, markdown_text)
+        """
+        if element is None:
+            return "", ""
+
+        plain_text = element.get_text(separator=' ', strip=True)
+        markdown_text = self._element_to_markdown(element)
+
+        return plain_text, markdown_text
 
     def _extract_body_parts(self, soup: BeautifulSoup) -> list[ScrapedPart]:
-        """Extract document body with structure detection."""
+        """Extract document body with structure detection and markdown conversion."""
         parts: list[ScrapedPart] = []
 
         current_article: Optional[ScrapedPart] = None
         current_section: Optional[ScrapedPart] = None
-        current_content: list[str] = []
+        current_content: list[tuple[str, str]] = []
+
+        passed_header = False
 
         body = soup.find('body') or soup
 
@@ -245,7 +286,6 @@ class LawphilStatuteParser:
 
             # Handle tables
             if element.name == 'table':
-                # Flush current content before table
                 if current_content:
                     self._flush_content(
                         current_content, current_section, current_article, parts
@@ -253,15 +293,16 @@ class LawphilStatuteParser:
                     current_content = []
 
                 table_md = self._table_to_markdown(element)
+                table_text = element.get_text(separator=' ', strip=True)
+
                 table_part = ScrapedPart(
-                    section_type=SectionType.BODY,  # Tables are body content
-                    content_text=element.get_text(strip=True),
+                    section_type=SectionType.TABLE,
+                    content_text=table_text,
                     content_markdown=table_md,
                     content_html=str(element),
                     sort_order=self._next_sort_order()
                 )
 
-                # Add table to current section/article or top-level
                 if current_section:
                     current_section.children.append(table_part)
                 elif current_article:
@@ -270,91 +311,115 @@ class LawphilStatuteParser:
                     parts.append(table_part)
                 continue
 
-            text = element.get_text(strip=True)
+            text, markdown = self._get_text_with_formatting(element)
+
             if not text:
                 continue
 
-            # Check for article header
-            article_match = self._article_pattern.match(text)
+            # Check for article markers
+            article_match = re.match(
+                r'^(ARTICLE|ART\.?)\s+([IVXLCDM]+|\d+)\.?\s*(.*)',
+                text, re.IGNORECASE
+            )
             if article_match:
-                # Flush any pending content
+                passed_header = True
                 if current_content:
                     self._flush_content(
                         current_content, current_section, current_article, parts
                     )
                     current_content = []
 
-                # Save previous article to parts
+                if current_section and current_article:
+                    current_article.children.append(current_section)
+                    current_section = None
+
                 if current_article:
                     parts.append(current_article)
 
-                article_num = article_match.group(1)
-                article_title = article_match.group(2).strip()
+                label = f"Article {article_match.group(2)}"
+                title_text = article_match.group(3).strip() if article_match.group(3) else ""
 
                 current_article = ScrapedPart(
                     section_type=SectionType.ARTICLE,
-                    label=f"Article {article_num}",
-                    content_text=article_title,
-                    content_markdown=f"## Article {article_num}\n\n{article_title}" if article_title else f"## Article {article_num}",
+                    label=label,
+                    content_text=title_text,
+                    content_markdown=title_text,
                     sort_order=self._next_sort_order()
                 )
-                current_section = None  # Reset section on new article
+                current_section = None
                 continue
 
-            # Check for section header
-            section_match = self._section_pattern.match(text)
+            # Check for section markers
+            section_match = re.match(
+                r'^(SECTION|SEC\.?)\s+(\d+)\.?\s*(.*)',
+                text, re.IGNORECASE
+            )
             if section_match:
-                # Flush any pending content
+                passed_header = True
                 if current_content:
                     self._flush_content(
                         current_content, current_section, current_article, parts
                     )
                     current_content = []
 
-                # Save previous section to article or parts
                 if current_section:
                     if current_article:
                         current_article.children.append(current_section)
                     else:
                         parts.append(current_section)
 
-                section_num = section_match.group(1)
-                section_text = section_match.group(2).strip()
+                label = f"Section {section_match.group(2)}"
+                title_text = section_match.group(3).strip() if section_match.group(3) else ""
 
                 current_section = ScrapedPart(
                     section_type=SectionType.SECTION,
-                    label=f"Section {section_num}",
-                    content_text=section_text,
-                    content_markdown=f"### Section {section_num}\n\n{section_text}" if section_text else f"### Section {section_num}",
+                    label=label,
+                    content_text=title_text,
+                    content_markdown=title_text,
                     sort_order=self._next_sort_order()
                 )
                 continue
 
-            # Regular content - accumulate
-            current_content.append(text)
+            if not passed_header and self._is_header_content(text):
+                continue
 
-        # Flush remaining content
+            current_content.append((text, markdown))
+
         if current_content:
             self._flush_content(
                 current_content, current_section, current_article, parts
             )
 
-        # Save last section
         if current_section:
             if current_article:
                 current_article.children.append(current_section)
             else:
                 parts.append(current_section)
 
-        # Save last article
         if current_article:
             parts.append(current_article)
 
         return parts
 
+    def _is_header_content(self, text: str) -> bool:
+        """Check if text is part of the document header/preamble to skip."""
+        if self._header_pattern.search(text):
+            return True
+
+        title_starters = [
+            'AN ACT', 'DECLARING', 'PROVIDING', 'DIRECTING', 'CREATING',
+            'ORDERING', 'ESTABLISHING', 'AMENDING', 'REPEALING'
+        ]
+        text_upper = text.upper().strip()
+        for starter in title_starters:
+            if text_upper.startswith(starter):
+                return True
+
+        return False
+
     def _flush_content(
         self,
-        content: list[str],
+        content: list[tuple[str, str]],
         current_section: Optional[ScrapedPart],
         current_article: Optional[ScrapedPart],
         parts: list[ScrapedPart]
@@ -363,11 +428,16 @@ class LawphilStatuteParser:
         if not content:
             return
 
-        text = '\n'.join(content)
+        text_parts = [t for t, m in content]
+        markdown_parts = [m for t, m in content]
+
+        text = '\n'.join(text_parts)
+        markdown = '\n\n'.join(markdown_parts)
+
         paragraph = ScrapedPart(
             section_type=SectionType.PARAGRAPH,
             content_text=text,
-            content_markdown=text,
+            content_markdown=markdown,
             sort_order=self._next_sort_order()
         )
 
@@ -378,45 +448,35 @@ class LawphilStatuteParser:
         else:
             parts.append(paragraph)
 
-    def _extract_tables(self, soup: BeautifulSoup) -> list[ScrapedPart]:
-        """Extract all tables as ScrapedPart objects."""
-        tables: list[ScrapedPart] = []
-
-        for table in soup.find_all('table'):
-            table_md = self._table_to_markdown(table)
-            tables.append(ScrapedPart(
-                section_type=SectionType.BODY,
-                content_text=table.get_text(strip=True),
-                content_markdown=table_md,
-                content_html=str(table),
-                sort_order=self._next_sort_order()
-            ))
-
-        return tables
-
     def _table_to_markdown(self, table: Tag) -> str:
         """Convert HTML table to Markdown."""
         rows = table.find_all('tr')
         if not rows:
-            return ''
+            return ""
 
         md_lines = []
 
         for i, row in enumerate(rows):
             cells = row.find_all(['td', 'th'])
-            cell_texts = [
-                cell.get_text(strip=True).replace('|', '\\|')
-                for cell in cells
-            ]
-            md_lines.append('| ' + ' | '.join(cell_texts) + ' |')
+            if not cells:
+                continue
+
+            cell_texts = []
+            for cell in cells:
+                cell_md = self._element_to_markdown(cell)
+                cell_md = re.sub(r'\s+', ' ', cell_md).strip()
+                cell_texts.append(cell_md)
+
+            md_lines.append("| " + " | ".join(cell_texts) + " |")
 
             if i == 0:
-                md_lines.append('| ' + ' | '.join(['---'] * len(cells)) + ' |')
+                separator = "| " + " | ".join(["---"] * len(cells)) + " |"
+                md_lines.append(separator)
 
-        return '\n'.join(md_lines)
+        return "\n".join(md_lines)
 
     def _extract_dates(self, soup: BeautifulSoup, config: StatutePattern) -> dict:
-        """Extract dates and parse them."""
+        """Extract dates and parse them to date objects."""
         dates = {}
         text = soup.get_text()
 
@@ -432,22 +492,26 @@ class LawphilStatuteParser:
                 match = re.search(pattern, text, re.IGNORECASE)
                 if match:
                     date_str = match.group(1)
-                    dates[date_field] = self._parse_date(date_str)
+                    parsed_date = self._parse_date(date_str)
+                    if parsed_date:
+                        dates[date_field] = parsed_date
 
         return dates
 
-    def _parse_date(self, date_str: str) -> Optional[str]:
+    def _parse_date(self, date_str: str) -> Optional[date]:
         """
-        Parse Philippine date format to ISO string.
-        Example: "June 19, 1946" -> "1946-06-19"
+        Parse Philippine date format to date object.
+        Example: "June 19, 1946" -> date(1946, 6, 19)
         """
+        from dateutil import parser
+        from loguru import logger
+
         try:
-            from dateutil.parser import parse
-            parsed = parse(date_str)
-            return parsed.date().isoformat()
-        except:
-            # Return raw string if parsing fails
-            return date_str
+            parsed = parser.parse(date_str)
+            return parsed.date()
+        except Exception as e:
+            logger.warning(f"Failed to parse date '{date_str}': {e}")
+            return None
 
     def _is_boilerplate(self, element: Tag) -> bool:
         """Detect boilerplate elements to skip."""

@@ -1,5 +1,6 @@
 from typing import Optional, AsyncIterator
 
+from loguru import logger
 from bs4 import BeautifulSoup
 
 from scrapers.base import BaseScraper
@@ -39,15 +40,22 @@ class LawphilScraper(BaseScraper):
         """URL registry for this scraper. Must be defined by subclass."""
         return LAWPHIL_PATHS
 
-    async def crawl(self, soup: BeautifulSoup) -> AsyncIterator[str]:
-        async for statute in self._extract_urls(soup.find("table", id="s-menu")):
-            html = await self.http_client.get_bytes(statute)
+    async def crawl(self, soup: BeautifulSoup, current_url: str) -> AsyncIterator[str]:
+        async for statute in self._extract_urls(soup.find("table", id="s-menu"), current_url):
+            logger.debug(f"Getting HTML for {statute}")
+            try:
+                html = await self.http_client.get_bytes(statute)
+            except Exception:
+                logger.debug(f"HTML extraction failed for {statute}")
+                continue
             soup = BeautifulSoup(html, "html.parser")
             self.visited_links.append(statute)
 
             yield statute
 
     async def scrape_document(self, doc_url: str, doc_type: DocumentType) -> Optional[ScrapedDocument]:
+        logger.debug(f"Scraping {doc_type} from: {doc_url}")
+
         html = await self.http_client.get_bytes(doc_url)
 
         if "/statutes/" in doc_url:

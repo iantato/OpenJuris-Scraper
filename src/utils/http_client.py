@@ -1,90 +1,98 @@
 import asyncio
+import random
+import time
 from typing import Optional
 
-import aiohttp
+import httpx
+from loguru import logger
 
-from config.scraper import ScraperSettings
 
-from exceptions import ScraperException
+class HttpClient:
+    """Async HTTP client with rate limiting and retries."""
 
-class HTTPClient:
-    """Async HTTP client with rate limiting and retry logic"""
+    def __init__(
+        self,
+        rate_limit: float = 1.0,
+        request_timeout: float = 30.0,
+        max_retries: int = 3,
+        user_agent: str = "OpenJuris-Scraper/1.0",
+    ):
+        self.rate_limit = rate_limit
+        self.request_timeout = request_timeout
+        self.max_retries = max_retries
+        self.user_agent = user_agent
+        self._client: Optional[httpx.AsyncClient] = None
+        self._last_request_time: float = 0
 
-    def __init__(self, config: ScraperSettings):
-        self.config = config
-        self._semaphore = asyncio.Semaphore(self.config.max_concurrent_requests)    # Limits concurrent requests
-        self._last_request_time = 0.0       # Tracks when the last request was made
-        self._lock = asyncio.Lock()         # Prevents race conditions when checking rate limit
-        self._session: Optional[aiohttp.ClientSession] = None
-
-    async def _get_session(self) -> aiohttp.ClientSession:
-        """Get or create aiohttp session (lazy initialization)"""
-        if self._session is None or self._session.closed:
-            timeout = aiohttp.ClientTimeout(total=self.config.request_timeout)
-            self._session = aiohttp.ClientSession(
-                timeout=timeout,
+    async def start(self):
+        """Initialize the HTTP client."""
+        if self._client is None:
+            self._client = httpx.AsyncClient(
+                timeout=httpx.Timeout(self.request_timeout),
+                follow_redirects=True,
                 headers={
-                    "User-Agent": self.config.user_agent
+                    "User-Agent": self.user_agent
                 }
             )
-        return self._session
-
-    async def _rate_limit(self):
-        """Enforce rate limiting between requests"""
-        async with self._lock:
-            loop = asyncio.get_event_loop()
-            current_time = loop.time()
-            min_interval = 1.0 / self.config.requests_per_second
-            elapsed = current_time - self._last_request_time
-
-            if elapsed < min_interval:
-                await asyncio.sleep(min_interval - elapsed)
-
-            self._last_request_time = loop.time()
-
-    async def get(self, url: str, retries: Optional[int] = None) -> str:
-        """Fetch URL with rate limiting and retry logic"""
-        retries = retries or self.config.max_retries
-
-        async with self._semaphore:
-            await self._rate_limit()
-
-            session = await self._get_session()
-            last_error: Optional[Exception] = None
-
-            for attempt in range(retries):
-                try:
-                    async with session.get(url) as response:
-                        response.raise_for_status()
-                        return await response.text()
-                except aiohttp.ClientError as e:
-                    last_error = e
-                    if attempt < retries - 1:
-                        wait_time = self.config.retry_backoff_base ** attempt
-                        await asyncio.sleep(wait_time)
-                    continue
-
-            raise last_error or ScraperException(f"Failed to fetch {url}")
-
-    async def get_bytes(self, url: str, retries: Optional[int] = None) -> bytes:
-        """Return raw bytes, let caller handle encoding."""
-        async with self._semaphore:
-            await self._rate_limit()
-            session = await self._get_session()
-
-            async with session.get(url) as response:
-                response.raise_for_status()
-                return await response.read()
+            logger.debug("HTTP client started")
 
     async def close(self):
-        """Close the HTTP session"""
-        if self._session and not self._session.closed:
-            await self._session.close()
+        """Close the HTTP client."""
+        if self._client is not None:
+            await self._client.aclose()
+            self._client = None
+            logger.debug("HTTP client closed")
 
     async def __aenter__(self):
-        """Asynchronous context manager entry"""
+        await self.start()
         return self
 
-    async def __aexit__(self, *args):
-        """Asynchronous context manager exit"""
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
         await self.close()
+
+    async def _rate_limit_wait(self):
+        """Wait to respect rate limiting with jitter."""
+        now = time.time()
+        elapsed = now - self._last_request_time
+        target = self.rate_limit
+
+        # Add +/-20% jitter to avoid thundering herd
+        jitter = target * 0.2
+        wait_for = max(0, target + random.uniform(-jitter, jitter) - elapsed)
+
+        if wait_for > 0:
+            await asyncio.sleep(wait_for)
+
+        self._last_request_time = time.time()
+
+    async def get_bytes(self, url: str) -> bytes:
+        """Fetch URL and return response bytes."""
+        if self._client is None:
+            await self.start()
+
+        await self._rate_limit_wait()
+
+        for attempt in range(self.max_retries):
+            try:
+                response = await self._client.get(url)
+                response.raise_for_status()
+                return response.content
+            except httpx.HTTPStatusError as e:
+                logger.warning(f"HTTP error {e.response.status_code} for {url}, attempt {attempt + 1}/{self.max_retries}")
+                if attempt == self.max_retries - 1:
+                    raise
+                # Exponential backoff
+                await asyncio.sleep(2 ** attempt)
+            except httpx.RequestError as e:
+                logger.warning(f"Request error for {url}: {e}, attempt {attempt + 1}/{self.max_retries}")
+                if attempt == self.max_retries - 1:
+                    raise
+                # Exponential backoff
+                await asyncio.sleep(2 ** attempt)
+
+        raise RuntimeError(f"Failed to fetch {url} after {self.max_retries} attempts")
+
+    async def get_text(self, url: str) -> str:
+        """Fetch URL and return response text."""
+        content = await self.get_bytes(url)
+        return content.decode('utf-8', errors='replace')

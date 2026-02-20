@@ -1,26 +1,28 @@
-from typing import Optional, Any
 from abc import ABC, abstractmethod
-from urllib.parse import urljoin
-from typing import AsyncIterator
-from dataclasses import asdict
+from typing import Optional, Any, AsyncIterator
 
 from bs4 import BeautifulSoup
-
-from utils.http_client import HTTPClient
-from enums.document_type import DocumentType
-from schemas.scraper_context import ScraperContext
-from schemas.scraped_document import ScrapedDocument
-from schemas.date_range import DateRange
+from loguru import logger
 
 from config.scraper import ScraperSettings
+from schemas.scraper_context import ScraperContext
+from schemas.scraped_document import ScrapedDocument
+from enums.document_type import DocumentType
+from utils.http_client import HttpClient
+
 
 class BaseScraper(ABC):
     """Abstract base class for all scrapers"""
 
     def __init__(self, settings: ScraperSettings, ctx: ScraperContext):
-        self.ctx = ctx
         self.settings = settings
-        self.http_client = HTTPClient(settings)
+        self.ctx = ctx
+        self.http_client = HttpClient(
+            rate_limit=settings.rate_limit,
+            request_timeout=settings.request_timeout,
+            max_retries=settings.max_retries,
+            user_agent=settings.user_agent,
+        )
         self.visited_links: list[str] = []
 
     @property
@@ -45,78 +47,69 @@ class BaseScraper(ABC):
         self,
         target_document_types: list[DocumentType] | None
     ) -> dict[DocumentType, str]:
-        """
-        Get filtered deep links based on target document types.
-
-        Args:
-            target_document_types (list[DocumentType] | None): A list of all the document types to be
-                                                               scraped. Defaults to None.
-
-        Returns:
-            dict[DocumentType, str]: A dictionary of all the deep links of specified document types.
-        """
-        # If the target_document_types has any sort of value, we filter the
-        # deep link/urls to instead just include the target document types.
-        # Otherwise, we crawl all the document types.
-        if target_document_types:
-            return {
-                doc_type: url
-                for doc_type, url in self.urls.items()
-                if doc_type in target_document_types
-            }
-        return self.urls
+        """Get deep links for the target document types."""
+        if target_document_types is None:
+            return self.urls
+        return {
+            doc_type: url
+            for doc_type, url in self.urls.items()
+            if doc_type in target_document_types
+        }
 
     @abstractmethod
     async def scrape_document(self, url: str, doc_type: DocumentType) -> Optional[ScrapedDocument]:
+        """Scrape a single document. Must be implemented by subclass."""
         ...
 
-    async def _extract_urls(self, soup: BeautifulSoup) -> AsyncIterator[str]:
-        """
-        Extract all the available urls in soup.
+    async def _extract_urls(self, soup: BeautifulSoup, current_url: Optional[str] = None) -> AsyncIterator[str]:
+        """Extract all valid URLs from a soup object."""
+        from urllib.parse import urljoin
 
-        Args:
-            soup (BeautifulSoup): BeautifulSoup object representing the parsed HTML page.
+        for link in soup.find_all('a', href=True):
+            href = link['href']
+            if current_url:
+                href = urljoin(current_url, href)
 
-        Yields:
-            str: Absolute URLs resolved with urljoin(self.base_url, href).
-                 Only URLs that start with self.base_url are returned (other
-                 schemes and external links are skipped).
-        """
-
-        for link in soup.find_all("a", href=True):
-            href = link["href"]
-
-            full_url = urljoin(self.base_url, href)
-
-            if not full_url.startswith(self.base_url):
-                continue
-
-            yield full_url
+            if href not in self.visited_links:
+                yield href
 
     async def run(self) -> AsyncIterator[ScrapedDocument]:
-        """
-        Crawl configured index pages and yield parsed documents.
+        """Main entry point for crawling and scraping."""
+        deep_links = self._get_deep_links(self.ctx.target_document_types)
 
-        Yields:
-            AsyncIterator[ScrapedDocument]: documents ready for persistence or further processing.
-        """
-        async with self.http_client:
-            deep_links = self._get_deep_links(self.ctx.target_document_types)
+        await self.http_client.start()
+        try:
+            for doc_type, index_url in deep_links.items():
+                full_url = f"{self.base_url.value}{index_url}"
+                logger.info(f"Crawling index: {full_url}")
 
-            for doc_type, url in deep_links.items():
-                full_url = urljoin(self.base_url, url)
+                try:
+                    html = await self.http_client.get_bytes(full_url)
+                    soup = BeautifulSoup(html, "html.parser")
 
-                html = await self.http_client.get_bytes(full_url)
-                soup = BeautifulSoup(html, "html.parser")
+                    async for doc_url in self.crawl(soup, full_url):
+                        if doc_url in self.visited_links:
+                            continue
 
-                # Using the HTML page given to the crawler, we get all the
-                # url available and scrape the documents from there.
-                async for doc in self.crawl(soup):
-                    document = await self.scrape_document(doc, doc_type)
+                        try:
+                            document = await self.scrape_document(doc_url, doc_type)
+                            if document:
+                                yield document
+                        except Exception as e:
+                            logger.error(f"Failed to scrape {doc_url}: {e}")
+                            continue
 
-                    if document:
-                        yield document
+                except Exception as e:
+                    logger.error(f"Failed to crawl index {full_url}: {e}")
+                    continue
+        finally:
+            await self.http_client.close()
+
+    @abstractmethod
+    async def crawl(self, soup: BeautifulSoup, current_url: str) -> AsyncIterator[str]:
+        """Crawl an index page and yield document URLs."""
+        ...
 
     async def close(self):
-        """Cleanup resources"""
+        """Close the scraper and release resources."""
         await self.http_client.close()

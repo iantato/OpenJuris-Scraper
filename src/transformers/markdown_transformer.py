@@ -2,20 +2,17 @@ from typing import Optional
 from schemas.scraped_document import ScrapedDocument
 from schemas.scraped_part import ScrapedPart
 from enums.section_type import SectionType
+from transformers.html_to_markdown import HtmlToMarkdown
+
 
 class MarkdownTransformer:
     """Convert ScrapedDocument to readable Markdown."""
 
+    def __init__(self):
+        self.html_converter = HtmlToMarkdown()
+
     def transform(self, document: ScrapedDocument) -> str:
-        """
-        Generate a complete Markdown document.
-
-        Args:
-            document: The scraped document to transform
-
-        Returns:
-            Formatted Markdown string
-        """
+        """Generate a complete Markdown document."""
         lines = []
 
         # Header
@@ -35,8 +32,8 @@ class MarkdownTransformer:
         if document.date_effectivity:
             lines.append(f"**Effectivity:** {document.date_effectivity}")
 
-        if document.metadata_fields.get("source_name", None):
-            lines.append(f"**Source:** {document.metadata_fields.get("source_name", None)}")
+        if document.metadata_fields.get("source_name"):
+            lines.append(f"**Source:** {document.metadata_fields.get('source_name')}")
         if document.source_url:
             lines.append(f"**URL:** {document.source_url}")
 
@@ -56,75 +53,87 @@ class MarkdownTransformer:
 
         return "\n".join(lines)
 
-    def _transform_part(
-        self, part: ScrapedPart, depth: int = 0
-    ) -> list[str]:
-        """
-        Recursively transform a ScrapedPart and its children.
-
-        Args:
-            part: The part to transform
-            depth: Current nesting depth
-
-        Returns:
-            List of markdown lines
-        """
+    def _transform_part(self, part: ScrapedPart, depth: int = 0) -> list[str]:
+        """Recursively transform a ScrapedPart and its children."""
         lines = []
         indent = "  " * depth
 
-        # Handle different section types
+        # Prefer content_markdown, fall back to content_text
+        content = part.content_markdown or part.content_text or ""
+
         if part.section_type == SectionType.ARTICLE:
-            lines.append(f"{indent}## {part.label or 'Article'}")
-            if part.content_text:
-                lines.append(f"{indent}{part.content_text}")
+            label = part.label or "Article"
+            lines.append(f"{indent}## {label}")
+            if content:
+                lines.append(f"{indent}{content}")
             lines.append("")
 
         elif part.section_type == SectionType.SECTION:
-            lines.append(f"{indent}### {part.label or 'Section'}")
-            if part.content_text:
-                lines.append(f"{indent}{part.content_text}")
+            label = part.label or "Section"
+            lines.append(f"{indent}### {label}")
+            if content:
+                lines.append(f"{indent}{content}")
+            lines.append("")
+
+        elif part.section_type == SectionType.SUBSECTION:
+            label = part.label or ""
+            if label:
+                lines.append(f"{indent}#### {label}")
+            if content:
+                lines.append(f"{indent}{content}")
             lines.append("")
 
         elif part.section_type == SectionType.PARAGRAPH:
-            if part.content_markdown:
-                lines.append(f"{indent}{part.content_markdown}")
-            elif part.content_text:
-                lines.append(f"{indent}{part.content_text}")
+            if content:
+                lines.append(f"{indent}{content}")
             lines.append("")
 
         elif part.section_type == SectionType.BODY:
-            # Tables or generic body content
-            if part.content_markdown:
-                lines.append(part.content_markdown)
-            elif part.content_text:
-                lines.append(part.content_text)
+            if content:
+                lines.append(content)
+            lines.append("")
+
+        elif part.section_type == SectionType.TABLE:
+            if content:
+                lines.append(content)
+            lines.append("")
+
+        elif part.section_type == SectionType.PREAMBLE:
+            if content:
+                lines.append(f"> {content}")
+            lines.append("")
+
+        elif part.section_type == SectionType.ENACTING_CLAUSE:
+            if content:
+                lines.append(f"*{content}*")
+            lines.append("")
+
+        elif part.section_type == SectionType.TITLE:
+            if content:
+                lines.append(f"# {content}")
+            lines.append("")
+
+        elif part.section_type == SectionType.FOOTNOTE:
+            if content:
+                lines.append(f"{indent}> *{content}*")
             lines.append("")
 
         else:
-            # Generic handling
+            # Generic handling for all other types
             if part.label:
                 lines.append(f"{indent}**{part.label}**")
-            if part.content_markdown:
-                lines.append(f"{indent}{part.content_markdown}")
-            elif part.content_text:
-                lines.append(f"{indent}{part.content_text}")
+            if content:
+                lines.append(f"{indent}{content}")
             lines.append("")
 
         # Recursively process children
         for child in part.children:
-            child_lines = self._transform_part(child, depth + 1)
-            lines.extend(child_lines)
+            lines.extend(self._transform_part(child, depth + 1))
 
         return lines
 
     def save_to_file(self, document: ScrapedDocument, filepath: str) -> None:
-        """
-        Transform and save to a file.
-
-        Args:
-            document: The document to save
-            filepath: Output file path
-        """
+        """Transform and save to a file."""
         markdown = self.transform(document)
         with open(filepath, 'w', encoding='utf-8') as f:
             f.write(markdown)
