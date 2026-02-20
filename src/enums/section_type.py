@@ -23,5 +23,6 @@ class SectionType(str, Enum):
 
     # Generic
     BODY = "body"
+    TABLE = "table"
     FOOTNOTE = "footnote"
     ANNEX = "annex"

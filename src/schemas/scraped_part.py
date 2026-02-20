@@ -14,4 +14,5 @@ class ScrapedPart:
 
     label: Optional[str] = None
     content_html: Optional[str] = None
+
     children: list["ScrapedPart"] = field(default_factory=list)

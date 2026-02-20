@@ -3,7 +3,8 @@ from datetime import date, datetime
 from typing import Optional, Any, TYPE_CHECKING
 
 from uuid6 import uuid7
-from sqlmodel import SQLModel, Column, JSON, Field, Relationship
+from pydantic import field_validator
+from sqlmodel import SQLModel, Column, JSON, Field, Relationship, Text
 
 from enums.document_category import DocumentCategory
 from enums.document_type import DocumentType
@@ -24,41 +25,45 @@ class Document(SQLModel, table=True):
     canonical_citation: str = Field(unique=True)    # e.g. "G.R. No. 12345", "Republic Act No. 1"
 
     title: str
-    short_title: Optional[str]
+    short_title: Optional[str] = None
     category: DocumentCategory
     doc_type: DocumentType
 
-    date_promulgated: Optional[date] = Field(index=True)    # Signed/Decided
-    date_published: Optional[date]                          # Gazette
-    date_effectivity: Optional[date]                        # Law is active
+    date_promulgated: Optional[date] = Field(default=None, index=True)    # Signed/Decided
+    date_published: Optional[date] = None                                  # Gazette
+    date_effectivity: Optional[date] = None                                # Law is active
 
-    source_id: Optional[UUID] = Field(foreign_key="sources.id")
-    source_url: str     # Specific deep link (e.g. "/judjuris/juri2024/jul2024/gr_242296_2024.html")
+    source_id: Optional[UUID] = Field(default=None, foreign_key="sources.id")
+    source_url: str     # Specific deep link
 
     source: Optional["Source"] = Relationship(back_populates="documents")
 
-    # Flexible Metadata. Instead of creating tables for different types of
-    # documents, we instead store their metadatas through a JSON field.
-    # For example, RAs get {congress, bills} while cases get {division, votes}.
+    # Full markdown representation of the entire document
+    content_markdown: Optional[str] = Field(default=None, sa_column=Column(Text, nullable=True))
+
+    # Flexible Metadata
     metadata_fields: dict[str, Any] = Field(default={}, sa_column=Column(JSON))
 
     created_at: Optional[datetime] = Field(default_factory=datetime.now)
 
     parts: list["DocumentPart"] = Relationship(back_populates="document")
 
-    # It answers the "Who do I cite/amend?" question.
+    # "Who do I cite/amend?" — this document is the source (actor)
     relations_made: list["DocumentRelation"] = Relationship(
+        back_populates="source_document",
         sa_relationship_kwargs={
-            "primaryjoin": "DocumentRelation.target_id==Document.id",
-            "lazy": "select"
+            "primaryjoin": "Document.id==DocumentRelation.source_id",
+            "lazy": "select",
         }
     )
 
-    # It answers the "Who cites/amends me?" question.
-    relations_receive: list["DocumentRelation"] = Relationship(
+    # "Who cites/amends me?" — this document is the target
+    relations_received: list["DocumentRelation"] = Relationship(
+        back_populates="target_document",
         sa_relationship_kwargs={
-            "primaryjoin": "DocumentRelation.target_id==Document.id",
-            "lazy": "select"
+            "primaryjoin": "Document.id==DocumentRelation.target_id",
+            "lazy": "select",
+            "overlaps": "relations_made,source_document",
         }
     )
 
@@ -66,3 +71,18 @@ class Document(SQLModel, table=True):
         back_populates="documents",
         link_model=DocumentSubjectLink
     )
+
+    @field_validator('date_promulgated', 'date_published', 'date_effectivity', mode='before')
+    @classmethod
+    def parse_date_fields(cls, value):
+        """Convert string dates to date objects, allowing None."""
+        if value is None or isinstance(value, date):
+            return value
+        if isinstance(value, str):
+            from dateutil import parser
+            try:
+                parsed = parser.parse(value)
+                return parsed.date()
+            except (ValueError, TypeError):
+                return None
+        return None

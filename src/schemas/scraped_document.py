@@ -27,3 +27,5 @@ class ScrapedDocument:
     parts: list[ScrapedPart] = field(default_factory=list)
 
     raw_html: Optional[str] = None
+
+    content_markdown: Optional[str] = None
