@@ -5,8 +5,9 @@ from enums.app_environment import AppEnvironment
 
 from config.scraper import ScraperSettings
 from config.database import DatabaseSettings
+from config.embedder import EmbedderSettings
 
-class Settings(DatabaseSettings, ScraperSettings):
+class Settings(DatabaseSettings, ScraperSettings, EmbedderSettings):
     """
     Main Application Settings.
     """

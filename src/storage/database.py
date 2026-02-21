@@ -1,8 +1,9 @@
 from contextlib import asynccontextmanager
 from typing import Optional, AsyncGenerator
 
+from loguru import logger
 from sqlmodel import SQLModel
-from sqlalchemy.pool import AsyncAdaptedQueuePool
+from sqlalchemy.pool import StaticPool, AsyncAdaptedQueuePool
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.ext.asyncio.session import AsyncSession
 
@@ -10,17 +11,15 @@ from exceptions import DatabaseException
 
 from config import Settings
 
+
 class Database:
 
     def __init__(self, settings: Settings, echo: Optional[bool] = False):
-        # Use the remote instance of Turso when production. Otherwise, just
-        # use the normal local sqlite database to minimize request limits.
         if settings.is_production:
             self.engine = create_async_engine(
-                settings.database_url,
+                f"{settings.database_url}?secure=true",
                 connect_args={
-                    "auth_token": settings.turso_auth_token,
-                    "secure": True
+                    "auth_token": settings.turso_auth_token
                 },
                 echo=echo,
                 poolclass=AsyncAdaptedQueuePool
@@ -29,33 +28,30 @@ class Database:
             self.engine = create_async_engine(
                 settings.database_url,
                 echo=echo,
-                poolclass=AsyncAdaptedQueuePool
+                connect_args={"check_same_thread": False},
+                poolclass=StaticPool,
             )
 
     async def create_tables(self) -> None:
         """
-        Create all tables defined by SQLModel metadata. Make sure
-        to import the models before creating the tables to add the
-        model into the SQLModel metadata.
+        Create all tables defined by SQLModel metadata.
+        The VectorType handles F32_BLOB column creation automatically.
         """
         async with self.engine.begin() as conn:
             await conn.run_sync(SQLModel.metadata.create_all)
+        logger.info("All tables created successfully")
 
     @asynccontextmanager
     async def session(self) -> AsyncGenerator[AsyncSession, None]:
-        """
-        Provides an asynchronous session as a context manager.
-        """
+        """Provides an asynchronous session as a context manager."""
         async with AsyncSession(self.engine, expire_on_commit=False) as session:
             try:
                 yield session
                 await session.commit()
             except Exception as e:
                 await session.rollback()
-                raise DatabaseException(f"An error occured in the database: {e}")
+                raise DatabaseException(f"An error occurred in the database: {e}")
 
     async def close(self):
-        """
-        Dispose of the engine connection pool.
-        """
+        """Dispose of the engine connection pool."""
         await self.engine.dispose()

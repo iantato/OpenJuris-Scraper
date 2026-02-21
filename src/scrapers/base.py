@@ -88,8 +88,6 @@ class BaseScraper(ABC):
                     soup = BeautifulSoup(html, "html.parser")
 
                     async for doc_url in self.crawl(soup, full_url):
-                        if doc_url in self.visited_links:
-                            continue
 
                         try:
                             document = await self.scrape_document(doc_url, doc_type)

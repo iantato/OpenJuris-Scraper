@@ -20,20 +20,26 @@ from api.dependencies import (
     get_scrape_job_repository,
     get_source_repository,
 )
-from config import Settings
 from config.scraper import ScraperSettings
+from config.embedder import EmbedderSettings
+
+from embedder.factory import get_embedder
+from embedder.embedder import EmbeddingService
 from storage.database import Database
 from storage.repositories.document import DocumentRepository
 from storage.repositories.scrape_job import ScrapeJobRepository
 from storage.repositories.source import SourceRepository
+from scrapers.lawphil.scraper import LawphilScraper
+from scrapers.sc_elibrary.scraper import SCELibraryScraper
+
 from schemas.scraper_context import ScraperContext
 from schemas.scraped_document import ScrapedDocument
 from schemas.scraped_part import ScrapedPart
-from scrapers.lawphil.scraper import LawphilScraper
-from scrapers.sc_elibrary.scraper import SCELibraryScraper
+
 from models.scrape_job import ScrapeJob
 from models.document import Document
 from models.document_part import DocumentPart
+
 from enums.source_name import SourceName
 from enums.scraper_status import ScraperStatus
 from enums.document_type import DocumentType
@@ -92,6 +98,7 @@ async def _save_document(
     session: AsyncSession,
     scraped_doc: ScrapedDocument,
     source_id: UUID,
+    embed: bool = True,
 ) -> Document:
     """Save a ScrapedDocument as a Document with all its parts."""
     document = Document(
@@ -120,6 +127,23 @@ async def _save_document(
 
         logger.info(f"Created {len(doc_parts)} document parts for {scraped_doc.canonical_citation}")
 
+    # Embed the document if requested
+    if embed and scraped_doc.content_markdown:
+        try:
+            embedder_settings = EmbedderSettings()
+            embedder = get_embedder(embedder_settings)
+            embedding_service = EmbeddingService(embedder, embedder_settings)
+
+            vectors = await embedding_service.embed_scraped_document(
+                document=scraped_doc,
+                document_id=document.id,
+                session=session,
+            )
+            logger.info(f"Created {len(vectors)} embeddings for {scraped_doc.canonical_citation}")
+        except Exception as e:
+            logger.error(f"Failed to embed document {scraped_doc.canonical_citation}: {e}")
+            # Don't fail the whole save operation if embedding fails
+
     return document
 
 
@@ -129,6 +153,7 @@ async def _crawl_source_task(
     document_types: list[DocumentType],
     scraper_settings: ScraperSettings,
     db: Database,
+    embed_documents: bool = True
 ):
     """Background task to crawl a source for specific document types."""
     ctx = ScraperContext(
@@ -161,7 +186,12 @@ async def _crawl_source_task(
                         logger.debug(f"Document already exists: {scraped_doc.source_url}")
                         continue
 
-                    document = await _save_document(session, scraped_doc, source_record.id)
+                    document = await _save_document(
+                        session,
+                        scraped_doc,
+                        source_record.id,
+                        embed=embed_documents,
+                    )
 
                     job = ScrapeJob(
                         source_id=source_record.id,
@@ -199,6 +229,7 @@ async def _scrape_document_task(
     source: SourceName,
     scraper_settings: ScraperSettings,
     db: Database,
+    embed_documents: bool = True
 ):
     """Background task to scrape a single document."""
     logger.info(f"Starting scrape task for {url}")
@@ -271,7 +302,12 @@ async def _scrape_document_task(
                     await session.commit()
                 return
 
-            document = await _save_document(session, scraped_doc, source_id)
+            document = await _save_document(
+                session,
+                scraped_doc,
+                source_id,
+                embed=embed_documents
+            )
 
             job = await job_repo.get_by_id(job_id)
             if job:
@@ -328,6 +364,7 @@ async def crawl_source(
         request.document_types,
         scraper_settings,
         db,
+        request.embed
     )
 
     return CrawlResponse(
@@ -405,6 +442,7 @@ async def scrape_document(
         request.source,
         scraper_settings,
         db,
+        request.embed,
     )
 
     return ScrapeJobResponse.model_validate(job)

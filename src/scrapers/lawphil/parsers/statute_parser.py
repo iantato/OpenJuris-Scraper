@@ -13,8 +13,8 @@ from enums.document_type import DocumentType
 from enums.document_category import DocumentCategory
 
 from scrapers.lawphil.constants import STATUTE_PATTERNS
-from transformers.html_to_markdown import HtmlToMarkdown
-from transformers.markdown_transformer import MarkdownTransformer
+from converters.html_to_markdown import HtmlToMarkdown
+from converters.markdown_transformer import MarkdownTransformer
 
 
 class LawphilStatuteParser:

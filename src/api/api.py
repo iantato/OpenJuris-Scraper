@@ -5,9 +5,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 
 from config import Settings
+from config.embedder import EmbedderSettings
+
 from storage.database import Database
 from storage.seed import seed_all
-from api.routers import documents_router, scraper_router
+from api.routers import documents_router, scraper_router, embedding_router
+
+from embedder.factory import get_embedder
 
 # Import models to register with SQLModel
 from models.source import Source                        # noqa: F401
@@ -19,6 +23,8 @@ from models.document_part import DocumentPart           # noqa: F401
 from models.subject_link import DocumentSubjectLink     # noqa: F401
 from models.document_relation import DocumentRelation   # noqa: F401
 
+from models.vector import configure_embedding_dimension
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -27,6 +33,15 @@ async def lifespan(app: FastAPI):
 
     settings = Settings()
     db = Database(settings)
+
+    embedder_settings = EmbedderSettings()
+    embedder = get_embedder(embedder_settings)
+
+    # Configure the vector column dimension BEFORE creating tables
+    dim = embedder.dimensions
+    logger.info(f"Embedding dimension: {dim}")
+    configure_embedding_dimension(dim)
+
     await db.create_tables()
 
     # Seed initial data
@@ -35,6 +50,8 @@ async def lifespan(app: FastAPI):
     # Store in app state
     app.state.settings = settings
     app.state.database = db
+    app.state.embedder_settings = embedder_settings
+    app.state.embedder = embedder
 
     logger.info("Database initialized")
 
@@ -68,6 +85,7 @@ def create_app() -> FastAPI:
     # Include routers
     app.include_router(documents_router, prefix="/api/v1")
     app.include_router(scraper_router, prefix="/api/v1")
+    app.include_router(embedding_router, prefix="/api/v1")
 
     @app.get("/health")
     async def health_check():

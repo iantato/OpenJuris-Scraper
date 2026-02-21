@@ -13,6 +13,7 @@ class ScrapeRequest(BaseModel):
     url: str
     doc_type: DocumentType
     source: SourceName = SourceName.LAWPHIL
+    embed: bool = True
 
 
 class ScrapeJobResponse(BaseModel):
@@ -38,6 +39,7 @@ class CrawlRequest(BaseModel):
     """Request to crawl and scrape all documents of certain types from a source."""
     source: SourceName
     document_types: list[DocumentType]
+    embed: bool = True
 
 
 class CrawlResponse(BaseModel):

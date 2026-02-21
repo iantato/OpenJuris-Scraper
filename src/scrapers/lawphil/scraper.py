@@ -41,6 +41,7 @@ class LawphilScraper(BaseScraper):
         return LAWPHIL_PATHS
 
     async def crawl(self, soup: BeautifulSoup, current_url: str) -> AsyncIterator[str]:
+
         async for statute in self._extract_urls(soup.find("table", id="s-menu"), current_url):
             logger.debug(f"Getting HTML for {statute}")
             try:
@@ -48,6 +49,11 @@ class LawphilScraper(BaseScraper):
             except Exception:
                 logger.debug(f"HTML extraction failed for {statute}")
                 continue
+
+            if ".pdf" in statute:
+                logger.warning(f"Skipping {statute} because of PDF")
+                continue
+
             soup = BeautifulSoup(html, "html.parser")
             self.visited_links.append(statute)
 

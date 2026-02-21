@@ -4,11 +4,14 @@ from fastapi import Depends
 from sqlalchemy.ext.asyncio.session import AsyncSession
 
 from config import Settings
+
 from storage.database import Database
 from storage.repositories.document import DocumentRepository
 from storage.repositories.source import SourceRepository
 from storage.repositories.scrape_job import ScrapeJobRepository
 
+from embedder.factory import get_embedder
+from embedder.embedder import EmbeddingService
 
 # Global instances
 _settings: Settings | None = None
@@ -59,3 +62,10 @@ async def get_scrape_job_repository(
 ) -> ScrapeJobRepository:
     """Get scrape job repository."""
     return ScrapeJobRepository(session)
+
+async def get_embedding_service(
+    settings: Settings = Depends(get_settings),
+) -> EmbeddingService:
+    """Get embedding service."""
+    embedder = get_embedder(settings)
+    return EmbeddingService(embedder, settings)
