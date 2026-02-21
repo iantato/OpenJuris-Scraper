@@ -6,10 +6,9 @@ from dataclasses import dataclass, field
 from uuid6 import uuid7
 
 from enums.document_type import DocumentType
-
 from storage.database import Database
-
 from config.scraper import ScraperSettings
+
 
 @dataclass
 class ScraperContext:
@@ -20,8 +19,10 @@ class ScraperContext:
     settings: ScraperSettings
 
     job_id: UUID = field(default_factory=uuid7)
-
     start_time: datetime = field(default_factory=datetime.now)
 
     # If None, scrape EVERYTHING.
     target_document_types: Optional[list[DocumentType]] = None
+
+    # Whether to embed documents immediately after scraping
+    embed_documents: bool = True
