@@ -1,8 +1,7 @@
-from typing import Optional
 from schemas.scraped_document import ScrapedDocument
 from schemas.scraped_part import ScrapedPart
 from enums.section_type import SectionType
-from transformers.html_to_markdown import HtmlToMarkdown
+from converters.html_to_markdown import HtmlToMarkdown
 
 
 class MarkdownTransformer:
