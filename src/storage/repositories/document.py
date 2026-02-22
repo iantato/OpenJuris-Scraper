@@ -1,5 +1,4 @@
 from typing import Optional, Sequence
-from uuid import UUID
 
 from sqlmodel import select
 from sqlalchemy.ext.asyncio.session import AsyncSession
@@ -71,3 +70,57 @@ class DocumentRepository(BaseRepository[Document]):
         statement = select(Document).where(Document.source_url == url)
         result = await self.session.execute(statement)
         return result.scalar_one_or_none()
+
+    async def get_sorted(
+        self,
+        sort_field: str = "title",
+        ascending: bool = True,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> Sequence[Document]:
+        """Get documents sorted by a specified field."""
+        order_by = getattr(Document, sort_field)
+        if not ascending:
+            order_by = order_by.desc()
+        statement = (
+            select(Document)
+            .order_by(order_by)
+            .offset(offset)
+            .limit(limit)
+        )
+        result = await self.session.execute(statement)
+        return result.scalars().all()
+
+    async def get_sorted_by_date(
+        self,
+        ascending: bool = True,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> Sequence[Document]:
+        """Get documents sorted by date field (assumes 'date' exists)."""
+        order_by = Document.date.asc() if ascending else Document.date.desc()
+        statement = (
+            select(Document)
+            .order_by(order_by)
+            .offset(offset)
+            .limit(limit)
+        )
+        result = await self.session.execute(statement)
+        return result.scalars().all()
+
+    async def get_sorted_by_title(
+        self,
+        ascending: bool = True,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> Sequence[Document]:
+        """Get documents sorted by title."""
+        order_by = Document.title.asc() if ascending else Document.title.desc()
+        statement = (
+            select(Document)
+            .order_by(order_by)
+            .offset(offset)
+            .limit(limit)
+        )
+        result = await self.session.execute(statement)
+        return result.scalars().all()

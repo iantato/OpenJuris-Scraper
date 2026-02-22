@@ -1,13 +1,16 @@
 from contextlib import asynccontextmanager
 
-from loguru import logger
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from loguru import logger
 
 from config import Settings
+from config.embedder import EmbedderSettings
 
 from storage.database import Database
 from storage.seed import seed_all
+from api.routers import documents_router, scraper_router, embedding_router
+
 from embedder.factory import get_embedder
 
 # Import models to register with SQLModel
@@ -24,12 +27,6 @@ from models.statistics import Statistics                # noqa: F401
 
 from models.vector import configure_embedding_dimension
 
-from api.routers import (
-    statistics_router,
-    documents_router,
-    vector_router,
-    document_flags_router
-)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -39,27 +36,33 @@ async def lifespan(app: FastAPI):
     settings = Settings()
     db = Database(settings)
 
-    # Initialize embedder to get the Embedder's dimensions
-    embedder = get_embedder(settings)
+    embedder_settings = EmbedderSettings()
+    embedder = get_embedder(embedder_settings)
+
+    # Configure the vector column dimension BEFORE creating tables
     dim = embedder.dimensions
-    logger.info(f"Embedding dimensions: {dim}")
+    logger.info(f"Embedding dimension: {dim}")
     configure_embedding_dimension(dim)
 
     await db.create_tables()
 
-    # Initialize some data to the database.
+    # Seed initial data
     await seed_all(db)
 
+    # Store in app state
     app.state.settings = settings
     app.state.database = db
+    app.state.embedder_settings = embedder_settings
     app.state.embedder = embedder
 
     logger.info("Database initialized")
 
     yield
 
+    # Cleanup
     await db.close()
-    logger.info("OpenJuris API shutdown complete.")
+    logger.info("OpenJuris API shutdown complete")
+
 
 def create_app() -> FastAPI:
     """Create and configure FastAPI application."""
@@ -69,20 +72,27 @@ def create_app() -> FastAPI:
         title=settings.app_name,
         description="API for Philippine Legal Documents Archive",
         version="0.1.0",
-        lifespan=lifespan
+        lifespan=lifespan,
     )
+
+    # CORS middleware
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
+        allow_origins=["*"],  # Configure for production
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
     )
 
+    # Include routers
     app.include_router(documents_router, prefix="/api/v1")
-    app.include_router(statistics_router, prefix="/api/v1")
-    app.include_router(vector_router, prefix="/api/v1")
-    app.include_router(document_flags_router, prefix="/api/v1")
+    app.include_router(scraper_router, prefix="/api/v1")
+    app.include_router(embedding_router, prefix="/api/v1")
+
+    @app.get("/health")
+    async def health_check():
+        """Health check endpoint."""
+        return {"status": "healthy"}
 
     @app.get("/")
     async def root():
@@ -90,19 +100,10 @@ def create_app() -> FastAPI:
         return {
             "name": settings.app_name,
             "version": "0.1.0",
-            "docs": "/docs"
+            "docs": "/docs",
         }
 
-    # # Public API Endpoint for public users.
-    # public_app = FastAPI(root_path="/api/public")
-    # public_app.add_middleware(
-    #     CORSMiddleware,
-    #     allow_origins=getattr(settings, "public_cors_origins", ["*"]),
-    #     allow_credentials=True,
-    #     allow_methods=["GET", "OPTIONS"],
-    #     allow_headers=["*"]
-    # )
-
     return app
+
 
 app = create_app()

@@ -1,29 +1,24 @@
-from uuid import UUID
 from typing import Optional
+from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query, Depends
+from fastapi import APIRouter, Depends, HTTPException, Query
 
+from api.schemas.document import DocumentResponse, DocumentListResponse
 from api.dependencies import get_document_repository
 from storage.repositories.document import DocumentRepository
-
 from enums.document_type import DocumentType
 from enums.document_category import DocumentCategory
 
-from api.schemas.document import (
-    DocumentListResponse,
-    DocumentResponse,
-    DocumentViewResponse
-)
-
 router = APIRouter(prefix="/documents", tags=["Documents"])
 
-@router.get("/")
+
+@router.get("/", response_model=DocumentListResponse)
 async def list_documents(
     limit: int = Query(default=20, le=100),
     offset: int = Query(default=0, ge=0),
     doc_type: Optional[DocumentType] = None,
     category: Optional[DocumentCategory] = None,
-    repo: DocumentRepository = Depends(get_document_repository)
+    repo: DocumentRepository = Depends(get_document_repository),
 ):
     """List documents with optional filtering."""
     if doc_type:
@@ -37,11 +32,11 @@ async def list_documents(
         items=[DocumentResponse.model_validate(doc) for doc in items],
         total=len(items),
         limit=limit,
-        offset=offset
+        offset=offset,
     )
 
 
-@router.get("/{document_id}", response_model=DocumentViewResponse)
+@router.get("/{document_id}", response_model=DocumentResponse)
 async def get_document(
     document_id: UUID,
     repo: DocumentRepository = Depends(get_document_repository),
@@ -78,56 +73,4 @@ async def search_documents(
         total=len(items),
         limit=limit,
         offset=0,
-    )
-
-
-@router.get("/sorted/", response_model=DocumentListResponse)
-async def get_sorted_documents(
-    sort_field: str = Query(default="title"),
-    ascending: bool = Query(default=True),
-    limit: int = Query(default=20, le=100),
-    offset: int = Query(default=0, ge=0),
-    repo: DocumentRepository = Depends(get_document_repository),
-):
-    """Get documents sorted by a specified field."""
-    items = await repo.get_sorted(sort_field=sort_field, ascending=ascending, limit=limit, offset=offset)
-    return DocumentListResponse(
-        items=[DocumentResponse.model_validate(doc) for doc in items],
-        total=len(items),
-        limit=limit,
-        offset=offset
-    )
-
-
-@router.get("/sorted/date/", response_model=DocumentListResponse)
-async def get_sorted_documents_by_date(
-    ascending: bool = Query(default=True),
-    limit: int = Query(default=20, le=100),
-    offset: int = Query(default=0, ge=0),
-    repo: DocumentRepository = Depends(get_document_repository),
-):
-    """Get documents sorted by date."""
-    items = await repo.get_sorted_by_date(ascending=ascending, limit=limit, offset=offset)
-    return DocumentListResponse(
-        items=[DocumentResponse.model_validate(doc) for doc in items],
-        total=len(items),
-        limit=limit,
-        offset=offset
-    )
-
-
-@router.get("/sorted/title/", response_model=DocumentListResponse)
-async def get_sorted_documents_by_title(
-    ascending: bool = Query(default=True),
-    limit: int = Query(default=20, le=100),
-    offset: int = Query(default=0, ge=0),
-    repo: DocumentRepository = Depends(get_document_repository),
-):
-    """Get documents sorted by title."""
-    items = await repo.get_sorted_by_title(ascending=ascending, limit=limit, offset=offset)
-    return DocumentListResponse(
-        items=[DocumentResponse.model_validate(doc) for doc in items],
-        total=len(items),
-        limit=limit,
-        offset=offset
     )

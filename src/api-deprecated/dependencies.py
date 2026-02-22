@@ -1,13 +1,22 @@
 from typing import AsyncGenerator
 
-from fastapi import Depends, Request
+from fastapi import Depends
 from sqlalchemy.ext.asyncio.session import AsyncSession
 
 from config import Settings
 
 from storage.database import Database
 from storage.repositories.document import DocumentRepository
-from storage.repositories.vector import VectorRepository
+from storage.repositories.source import SourceRepository
+from storage.repositories.scrape_job import ScrapeJobRepository
+
+from embedder.factory import get_embedder
+from embedder.embedder import EmbeddingService
+
+# Global instances
+_settings: Settings | None = None
+_database: Database | None = None
+
 
 def get_settings() -> Settings:
     """Get application settings."""
@@ -41,14 +50,22 @@ async def get_document_repository(
     return DocumentRepository(session)
 
 
-async def get_vector_repository(
+async def get_source_repository(
     session: AsyncSession = Depends(get_session),
-    request: Request = None,
-) -> VectorRepository:
-    """
-    Dependency: yields a VectorRepository using the session and app embedder.
-    """
-    if request is None:
-        raise RuntimeError("Request object is required for get_vector_repository")
-    embedder = request.app.state.embedder
-    return VectorRepository(session, embedder)
+) -> SourceRepository:
+    """Get source repository."""
+    return SourceRepository(session)
+
+
+async def get_scrape_job_repository(
+    session: AsyncSession = Depends(get_session),
+) -> ScrapeJobRepository:
+    """Get scrape job repository."""
+    return ScrapeJobRepository(session)
+
+async def get_embedding_service(
+    settings: Settings = Depends(get_settings),
+) -> EmbeddingService:
+    """Get embedding service."""
+    embedder = get_embedder(settings)
+    return EmbeddingService(embedder, settings)
