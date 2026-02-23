@@ -1,6 +1,7 @@
 from uuid import UUID
 from typing import Optional
 
+from loguru import logger
 from fastapi import APIRouter, HTTPException, Query, Depends
 
 from api.dependencies import get_document_repository
@@ -17,7 +18,8 @@ from api.schemas.document import (
 
 router = APIRouter(prefix="/documents", tags=["Documents"])
 
-@router.get("/")
+
+@router.get("/", response_model=DocumentListResponse)
 async def list_documents(
     limit: int = Query(default=20, le=100),
     offset: int = Query(default=0, ge=0),
@@ -26,6 +28,7 @@ async def list_documents(
     repo: DocumentRepository = Depends(get_document_repository)
 ):
     """List documents with optional filtering."""
+    items = None
     if doc_type:
         items = await repo.get_by_type(doc_type, limit=limit, offset=offset)
     elif category:
@@ -58,10 +61,13 @@ async def get_document_by_citation(
     citation: str,
     repo: DocumentRepository = Depends(get_document_repository),
 ):
-    """Get a document by its canonical citation."""
+    """Get the first document by its canonical citation (returns one if multiple exist)."""
     document = await repo.get_by_citation(citation)
     if not document:
-        raise HTTPException(status_code=404, detail="Document not found")
+        raise HTTPException(
+            status_code=404,
+            detail=f"Document with citation '{citation}' not found"
+        )
     return DocumentResponse.model_validate(document)
 
 

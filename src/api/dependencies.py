@@ -8,6 +8,10 @@ from config import Settings
 from storage.database import Database
 from storage.repositories.document import DocumentRepository
 from storage.repositories.vector import VectorRepository
+from storage.repositories.statistics import StatisticsRepository
+
+_settings: Settings | None = None
+_database: Database | None = None
 
 def get_settings() -> Settings:
     """Get application settings."""
@@ -52,3 +56,8 @@ async def get_vector_repository(
         raise RuntimeError("Request object is required for get_vector_repository")
     embedder = request.app.state.embedder
     return VectorRepository(session, embedder)
+
+async def get_statistics_repository(
+    session: AsyncSession = Depends(get_session),
+) -> StatisticsRepository:
+    return StatisticsRepository(session)

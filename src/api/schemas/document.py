@@ -27,7 +27,7 @@ class DocumentResponse(DocumentBase):
 
     model_config = {"from_attributes": True}
 
-class DocumentListResponse(DocumentBase):
+class DocumentListResponse(BaseModel):
     items: list[DocumentResponse]
     total: int
     limit: int

@@ -22,7 +22,7 @@ class Document(SQLModel, table=True):
     __tablename__ = "documents"
 
     id: UUID = Field(default_factory=uuid7, primary_key=True)
-    canonical_citation: str = Field(unique=True)    # e.g. "G.R. No. 12345", "Republic Act No. 1"
+    canonical_citation: str   # e.g. "G.R. No. 12345", "Republic Act No. 1"
 
     title: str
     short_title: Optional[str] = None

@@ -9,7 +9,7 @@ from storage.repositories.base import BaseRepository
 
 class StatisticsRepository(BaseRepository[Statistics]):
     def __init__(self, session: AsyncSession):
-        self.session = session
+        super().__init__(session, Statistics)
 
     async def get_by_name(self, name: str) -> Sequence[Statistics]:
         result = await self.session.execute(select(Statistics).where(Statistics.stat_name == name))
