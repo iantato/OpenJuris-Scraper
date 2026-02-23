@@ -79,11 +79,12 @@ def create_app() -> FastAPI:
         lifespan=lifespan
     )
 
-    app.add_middleware(
-        RateLimitMiddleware,
-        requests_per_minute=60,
-        requests_per_hour=1000
-    )
+    if settings.is_production:
+        app.add_middleware(
+            RateLimitMiddleware,
+            requests_per_minute=60,
+            requests_per_hour=1000
+        )
 
     app.add_middleware(
         CORSMiddleware,
@@ -120,11 +121,12 @@ def create_app() -> FastAPI:
         allow_headers=["*"]
     )
 
-    public_app.add_middleware(
-        RateLimitMiddleware,
-        requests_per_minute=60,
-        requests_per_hour=1000
-    )
+    if settings.is_production:
+        public_app.add_middleware(
+            RateLimitMiddleware,
+            requests_per_minute=60,
+            requests_per_hour=1000
+        )
 
     public_app.include_router(public_router, prefix="/api/public")
 
