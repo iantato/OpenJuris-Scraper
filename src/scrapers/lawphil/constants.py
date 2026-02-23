@@ -47,7 +47,7 @@ STATUTE_PATTERNS: dict[DocumentType, StatutePattern] = {
     ),
 
     DocumentType.EXECUTIVE_ORDER: StatutePattern(
-        statute_type=DocumentType.EXECUTIVE_ORDER,
+        document_type=DocumentType.EXECUTIVE_ORDER,
         display_name="Executive Order",
         abbreviation="E.O.",
         patterns=[
@@ -61,7 +61,7 @@ STATUTE_PATTERNS: dict[DocumentType, StatutePattern] = {
     ),
 
     DocumentType.BATAS_PAMBANSA: StatutePattern(
-        statute_type=DocumentType.BATAS_PAMBANSA,
+        document_type=DocumentType.BATAS_PAMBANSA,
         display_name="Batas Pambansa",
         abbreviation="B.P.",
         patterns=[
@@ -75,7 +75,7 @@ STATUTE_PATTERNS: dict[DocumentType, StatutePattern] = {
     ),
 
     DocumentType.COMMONWEALTH_ACT: StatutePattern(
-        statute_type=DocumentType.COMMONWEALTH_ACT,
+        document_type=DocumentType.COMMONWEALTH_ACT,
         display_name="Commonwealth Act",
         abbreviation="C.A.",
         patterns=[
@@ -89,7 +89,7 @@ STATUTE_PATTERNS: dict[DocumentType, StatutePattern] = {
     ),
 
     DocumentType.ACT: StatutePattern(
-        statute_type=DocumentType.ACT,
+        document_type=DocumentType.ACT,
         display_name="Act",
         abbreviation="Act",
         patterns=[
@@ -102,22 +102,22 @@ STATUTE_PATTERNS: dict[DocumentType, StatutePattern] = {
         date_fields=['enacted', 'effectivity'],
     ),
 
-    DocumentType.PRESIDENTIAL_PROCLAMATION: StatutePattern(
-        statute_type=DocumentType.PRESIDENTIAL_PROCLAMATION,
-        display_name="Presidential Proclamation",
-        abbreviation="Proc.",
-        patterns=[
-            r'\[?\s*((?:PRESIDENTIAL\s+)?PROCLAMATION\s+NO\.?\s*(\d+))\s*\]?',
-            r'(Proclamation\s+No\.?\s*(\d+))',
-            r'(Proc\.?\s*(?:No\.?)?\s*(\d+))',
-        ],
-        url_indicators=['proc', 'proclamation', '/proc/'],
-        title_prefixes=['DECLARING', 'PROCLAIMING'],
-        date_fields=['issued', 'effectivity'],
-    ),
+    # DocumentType.PRESIDENTIAL_PROCLAMATION: StatutePattern(
+    #     document_type=DocumentType.PRESIDENTIAL_PROCLAMATION,
+    #     display_name="Presidential Proclamation",
+    #     abbreviation="Proc.",
+    #     patterns=[
+    #         r'\[?\s*((?:PRESIDENTIAL\s+)?PROCLAMATION\s+NO\.?\s*(\d+))\s*\]?',
+    #         r'(Proclamation\s+No\.?\s*(\d+))',
+    #         r'(Proc\.?\s*(?:No\.?)?\s*(\d+))',
+    #     ],
+    #     url_indicators=['proc', 'proclamation', '/proc/'],
+    #     title_prefixes=['DECLARING', 'PROCLAIMING'],
+    #     date_fields=['issued', 'effectivity'],
+    # ),
 
     DocumentType.ADMINISTRATIVE_ORDER: StatutePattern(
-        statute_type=DocumentType.ADMINISTRATIVE_ORDER,
+        document_type=DocumentType.ADMINISTRATIVE_ORDER,
         display_name="Administrative Order",
         abbreviation="A.O.",
         patterns=[
@@ -131,7 +131,7 @@ STATUTE_PATTERNS: dict[DocumentType, StatutePattern] = {
     ),
 
     DocumentType.MEMORANDUM_ORDER: StatutePattern(
-        statute_type=DocumentType.MEMORANDUM_ORDER,
+        document_type=DocumentType.MEMORANDUM_ORDER,
         display_name="Memorandum Order",
         abbreviation="M.O.",
         patterns=[
@@ -145,7 +145,7 @@ STATUTE_PATTERNS: dict[DocumentType, StatutePattern] = {
     ),
 
     DocumentType.LETTER_OF_INSTRUCTION: StatutePattern(
-        statute_type=DocumentType.LETTER_OF_INSTRUCTION,
+        document_type=DocumentType.LETTER_OF_INSTRUCTION,
         display_name="Letter of Instruction",
         abbreviation="LOI",
         patterns=[

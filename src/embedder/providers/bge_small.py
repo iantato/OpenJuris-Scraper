@@ -40,3 +40,4 @@ class BGESmallEmbedder(BaseEmbedder):
         )
 
         return vectors.tolist()
+
