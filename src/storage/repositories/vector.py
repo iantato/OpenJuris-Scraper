@@ -79,58 +79,56 @@ class VectorRepository(BaseRepository[DocumentVector]):
     ) -> Sequence[dict]:
         """Search for similar vectors using cosine similarity."""
         query_embedding = await self.embedder.embed(query)
-        embedding_json = json.dumps(query_embedding)
+        embedding_str = json.dumps(query_embedding)
 
+        # Get raw connection from SQLAlchemy session
+        conn = await self.session.connection()
+        raw_conn = await conn.get_raw_connection()
+
+        # aiolibsql execute returns cursor synchronously, but driver is async
         if document_id:
-            sql = text("""
-                SELECT
-                    id, document_id, chunk_index, content, section_title,
-                    (1 - vector_distance_cos(embedding, vector(:query_embedding))) as similarity
+            cursor = raw_conn.execute(  # No await here
+                """
+                SELECT id, document_id, chunk_index, content, section_title,
+                       vector_distance_cos(embedding, ?) as distance
                 FROM document_vectors
-                WHERE document_id = :doc_id
-                AND (1 - vector_distance_cos(embedding, vector(:query_embedding))) >= :threshold
-                ORDER BY similarity DESC
-                LIMIT :limit
-            """)
-            params = {
-                "query_embedding": embedding_json,
-                "doc_id": str(document_id),
-                "threshold": threshold,
-                "limit": limit,
-            }
+                WHERE document_id = ?
+                ORDER BY distance ASC
+                LIMIT ?
+                """,
+                (embedding_str, str(document_id), limit)
+            )
         else:
-            sql = text("""
-                SELECT
-                    id, document_id, chunk_index, content, section_title,
-                    (1 - vector_distance_cos(embedding, vector(:query_embedding))) as similarity
+            cursor = raw_conn.execute(  # No await here
+                """
+                SELECT id, document_id, chunk_index, content, section_title,
+                       vector_distance_cos(embedding, ?) as distance
                 FROM document_vectors
-                WHERE (1 - vector_distance_cos(embedding, vector(:query_embedding))) >= :threshold
-                ORDER BY similarity DESC
-                LIMIT :limit
-            """)
-            params = {
-                "query_embedding": embedding_json,
-                "threshold": threshold,
-                "limit": limit,
-            }
+                ORDER BY distance ASC
+                LIMIT ?
+                """,
+                (embedding_str, limit)
+            )
 
-        result = await self.session.execute(sql, params)
-        rows = result.fetchall()
+        # fetchall() is also synchronous
+        rows = cursor.fetchall()
 
-        return [
-            {
-                "id": row.id,
-                "document_id": row.document_id,
-                "chunk_index": row.chunk_index,
-                "content": row.content,
-                "section_title": row.section_title,
-                "similarity": row.similarity,
-            }
-            for row in rows
-        ]
+        results = []
+        for row in rows:
+            similarity = 1 - float(row[5])  # Convert distance to similarity
+            if similarity >= threshold:
+                results.append({
+                    "id": str(row[0]),
+                    "document_id": str(row[1]),
+                    "chunk_index": int(row[2]),
+                    "content": str(row[3]),
+                    "section_title": str(row[4]) if row[4] else None,
+                    "similarity": similarity,
+                })
+
+        return results
 
     async def get_by_document(self, document_id: UUID) -> Sequence[DocumentVector]:
-        """Get all vectors for a document."""
         statement = (
             select(DocumentVector)
             .where(DocumentVector.document_id == document_id)
@@ -141,11 +139,14 @@ class VectorRepository(BaseRepository[DocumentVector]):
 
     async def delete_by_document(self, document_id: UUID) -> int:
         """Delete all vectors for a document."""
-        from sqlalchemy import delete
-
-        statement = delete(DocumentVector).where(
+        statement = select(DocumentVector).where(
             DocumentVector.document_id == document_id
         )
         result = await self.session.execute(statement)
-        await self.session.flush()
-        return result.rowcount
+        vectors = result.scalars().all()
+
+        for vector in vectors:
+            await self.session.delete(vector)
+
+        await self.session.commit()
+        return len(vectors)
