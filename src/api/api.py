@@ -82,8 +82,8 @@ def create_app() -> FastAPI:
     if settings.is_production:
         app.add_middleware(
             RateLimitMiddleware,
-            requests_per_minute=60,
-            requests_per_hour=1000
+            requests_per_minute=100,
+            requests_per_hour=50000
         )
 
     app.add_middleware(

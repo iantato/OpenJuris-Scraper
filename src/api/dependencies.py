@@ -19,7 +19,6 @@ from services.embed import EmbedService
 _settings: Settings | None = None
 _database: Database | None = None
 
-
 def get_settings() -> Settings:
     """Get application settings."""
     global _settings

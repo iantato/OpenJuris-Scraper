@@ -13,7 +13,7 @@ from enums.document_category import DocumentCategory
 from api.schemas.document import (
     DocumentListResponse,
     DocumentResponse,
-    DocumentViewResponse
+    DocumentViewResponse,
 )
 
 router = APIRouter(prefix="/documents", tags=["Documents"])
@@ -49,11 +49,32 @@ async def get_document(
     document_id: UUID,
     repo: DocumentRepository = Depends(get_document_repository),
 ):
-    """Get a specific document by ID."""
+    """Get a specific document by ID with rebuilt content (replaces tables with HTML)."""
     document = await repo.get_by_id(document_id)
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
-    return DocumentViewResponse.model_validate(document.model_dump())
+
+    # Get document parts
+    parts = getattr(document, "parts", []) or []
+
+    # Start with original markdown content
+    rebuilt_content = document.content_markdown or ""
+
+    # Replace markdown tables with their HTML equivalents
+    for part in parts:
+        # Check if part has content_html (original HTML for tables)
+        if part.content_html and part.content_markdown:
+            # Replace the markdown version with HTML version
+            rebuilt_content = rebuilt_content.replace(
+                part.content_markdown,
+                part.content_html
+            )
+
+    # Build response with rebuilt content
+    doc_dict = document.model_dump()
+    doc_dict["content_markdown"] = rebuilt_content
+
+    return DocumentViewResponse.model_validate(doc_dict)
 
 
 @router.get("/citation/{citation}", response_model=DocumentResponse)

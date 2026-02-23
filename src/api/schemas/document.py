@@ -33,5 +33,5 @@ class DocumentListResponse(BaseModel):
     limit: int
     offset: int
 
-class DocumentViewResponse(DocumentBase):
+class DocumentViewResponse(DocumentResponse):
     content_markdown: str
