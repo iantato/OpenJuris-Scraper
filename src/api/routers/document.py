@@ -53,7 +53,7 @@ async def get_document(
     document = await repo.get_by_id(document_id)
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
-    return DocumentResponse.model_validate(document)
+    return DocumentViewResponse.model_validate(document.model_dump())
 
 
 @router.get("/citation/{citation}", response_model=DocumentResponse)

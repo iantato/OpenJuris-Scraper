@@ -1,7 +1,7 @@
 from contextlib import asynccontextmanager
 
 from loguru import logger
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 
 from config import Settings
@@ -9,6 +9,8 @@ from config import Settings
 from storage.database import Database
 from storage.seed import seed_all
 from embedder.factory import get_embedder
+
+from api.dependencies import verify_internal_api_key
 
 # Import models to register with SQLModel
 from models.source import Source                        # noqa: F401
@@ -24,11 +26,16 @@ from models.statistics import Statistics                # noqa: F401
 
 from models.vector import configure_embedding_dimension
 
+from api.middleware.rate_limit import RateLimitMiddleware
+
 from api.routers import (
     statistics_router,
     documents_router,
     vector_router,
-    document_flags_router
+    document_flags_router,
+    scraper_router,
+    embedding_router,
+    public_router
 )
 
 @asynccontextmanager
@@ -71,6 +78,13 @@ def create_app() -> FastAPI:
         version="0.1.0",
         lifespan=lifespan
     )
+
+    app.add_middleware(
+        RateLimitMiddleware,
+        requests_per_minute=60,
+        requests_per_hour=1000
+    )
+
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
@@ -79,10 +93,12 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    app.include_router(documents_router, prefix="/api/v1")
-    app.include_router(statistics_router, prefix="/api/v1")
-    app.include_router(vector_router, prefix="/api/v1")
-    app.include_router(document_flags_router, prefix="/api/v1")
+    app.include_router(documents_router, prefix="/api/v1", dependencies=[Depends(verify_internal_api_key)])
+    app.include_router(statistics_router, prefix="/api/v1", dependencies=[Depends(verify_internal_api_key)])
+    app.include_router(vector_router, prefix="/api/v1", dependencies=[Depends(verify_internal_api_key)])
+    app.include_router(document_flags_router, prefix="/api/v1", dependencies=[Depends(verify_internal_api_key)])
+    app.include_router(embedding_router, prefix="/api/v1", dependencies=[Depends(verify_internal_api_key)])
+    app.include_router(scraper_router, prefix="/api/v1", dependencies=[Depends(verify_internal_api_key)])
 
     @app.get("/")
     async def root():
@@ -93,15 +109,26 @@ def create_app() -> FastAPI:
             "docs": "/docs"
         }
 
-    # # Public API Endpoint for public users.
-    # public_app = FastAPI(root_path="/api/public")
-    # public_app.add_middleware(
-    #     CORSMiddleware,
-    #     allow_origins=getattr(settings, "public_cors_origins", ["*"]),
-    #     allow_credentials=True,
-    #     allow_methods=["GET", "OPTIONS"],
-    #     allow_headers=["*"]
-    # )
+    # Public API Endpoint for public users.
+    public_app = FastAPI(root_path="/api/public")
+
+    public_app.add_middleware(
+        CORSMiddleware,
+        allow_origins=getattr(settings, "public_cors_origins", ["*"]),
+        allow_credentials=True,
+        allow_methods=["GET", "OPTIONS"],
+        allow_headers=["*"]
+    )
+
+    public_app.add_middleware(
+        RateLimitMiddleware,
+        requests_per_minute=60,
+        requests_per_hour=1000
+    )
+
+    public_app.include_router(public_router, prefix="/api/public")
+
+    app.mount("/api/public", public_app)
 
     return app
 

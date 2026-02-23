@@ -14,6 +14,8 @@ class Settings(DatabaseSettings, ScraperSettings, EmbedderSettings):
     app_name: str = "OpenJuris API | Legal Documents Archive"
     environment: AppEnvironment = AppEnvironment.PRODUCTION
 
+    internal_api_key: str
+
     # --- External APIs ---
     llm_api_key: str | None = None
 

@@ -19,7 +19,6 @@ dependencies = [
     "sentence-transformers>=5.2.3",
     "sqlalchemy-libsql>=0.2.0",
     "sqlmodel>=0.0.34",
-    "torch>=2.10.0",
     "transformers>=5.2.0",
     "uuid6>=2025.0.1",
     "uvicorn>=0.41.0",

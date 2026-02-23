@@ -1,4 +1,4 @@
-from typing import Optional, Sequence
+from typing import Optional
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,9 +11,9 @@ class StatisticsRepository(BaseRepository[Statistics]):
     def __init__(self, session: AsyncSession):
         super().__init__(session, Statistics)
 
-    async def get_by_name(self, name: str) -> Sequence[Statistics]:
+    async def get_by_name(self, name: str) -> Optional[Statistics]:
         result = await self.session.execute(select(Statistics).where(Statistics.stat_name == name))
-        return result.scalars().all()
+        return result.scalar_one_or_none()
 
     async def update(self, stat_id: UUID, stat: int) -> Optional[Statistics]:
         db_stat = await self.get_by_id(stat_id)
