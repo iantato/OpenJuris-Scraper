@@ -7,6 +7,11 @@ from fastapi import APIRouter, HTTPException, Query, Depends
 from api.dependencies import get_document_repository
 from storage.repositories.document import DocumentRepository
 
+from converters.markdown_transformer import MarkdownTransformer
+
+from models.document_part import DocumentPart
+from schemas.scraped_document import ScrapedDocument
+from schemas.scraped_part import ScrapedPart
 from enums.document_type import DocumentType
 from enums.document_category import DocumentCategory
 
@@ -54,27 +59,63 @@ async def get_document(
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    # Get document parts
-    parts = getattr(document, "parts", []) or []
+    # Convert ORM document to ScrapedDocument for transformation
+    parts: list[DocumentPart] = getattr(document, "parts", []) or []
 
-    # Start with original markdown content
-    rebuilt_content = document.content_markdown or ""
-
-    # Replace markdown tables with their HTML equivalents
+    # Build ScrapedPart tree from DocumentPart models
+    scraped_parts = []
     for part in parts:
-        # Check if part has content_html (original HTML for tables)
-        if part.content_html and part.content_markdown:
-            # Replace the markdown version with HTML version
-            rebuilt_content = rebuilt_content.replace(
-                part.content_markdown,
-                part.content_html
-            )
+        if part.parent_id is None:  # Only process root parts
+            scraped_part = _build_scraped_part(part, parts)
+            scraped_parts.append(scraped_part)
+
+    # Create ScrapedDocument
+    scraped_doc = ScrapedDocument(
+        canonical_citation=document.canonical_citation,
+        title=document.title,
+        source_url=document.source_url,
+        doc_type=document.doc_type,
+        category=document.category,
+        date_promulgated=document.date_published,
+        parts=scraped_parts,
+        metadata_fields=document.metadata_fields or {}
+    )
+
+    # Rebuild markdown using transformer
+    transformer = MarkdownTransformer()
+    rebuilt_content = transformer.transform(scraped_doc)
 
     # Build response with rebuilt content
     doc_dict = document.model_dump()
     doc_dict["content_markdown"] = rebuilt_content
 
     return DocumentViewResponse.model_validate(doc_dict)
+
+
+def _build_scraped_part(part: DocumentPart, all_parts: list[DocumentPart]) -> ScrapedPart:
+    """Build a ScrapedPart from a DocumentPart, using HTML for tables."""
+    # Use content_html for tables, content_markdown for everything else
+    content_markdown = part.content_html if part.section_type == "table" else part.content_markdown
+
+    return ScrapedPart(
+        section_type=part.section_type,
+        label=part.label,
+        content_text=part.content_text,
+        content_markdown=content_markdown,
+        content_html=part.content_html,
+        sort_order=part.sort_order,
+        children=_build_children(part, all_parts)
+    )
+
+
+def _build_children(parent, all_parts):
+    """Recursively build children for a DocumentPart."""
+    children = []
+    for part in all_parts:
+        if part.parent_id == parent.id:
+            scraped_child = _build_scraped_part(part, all_parts)
+            children.append(scraped_child)
+    return sorted(children, key=lambda x: x.sort_order)
 
 
 @router.get("/citation/{citation}", response_model=DocumentResponse)
@@ -117,6 +158,9 @@ async def get_sorted_documents(
     repo: DocumentRepository = Depends(get_document_repository),
 ):
     """Get documents sorted by a specified field."""
+
+    logger.debug(sort_field)
+
     items = await repo.get_sorted(sort_field=sort_field, ascending=ascending, limit=limit, offset=offset)
     return DocumentListResponse(
         items=[DocumentResponse.model_validate(doc) for doc in items],

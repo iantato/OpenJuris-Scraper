@@ -45,11 +45,6 @@ class MarkdownTransformer:
             lines.extend(self._transform_part(part, depth=0))
             lines.append("")
 
-        # Footer
-        lines.append("---")
-        lines.append("")
-        lines.append(f"*Document Type: {document.doc_type.value}*")
-
         return "\n".join(lines)
 
     def _transform_part(self, part: ScrapedPart, depth: int = 0) -> list[str]:

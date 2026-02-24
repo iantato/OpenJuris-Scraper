@@ -8,7 +8,7 @@ class ScraperSettings(BaseSettings):
     """Configuration for scraper behavior"""
 
     # Rate limiting
-    requests_per_second: float = Field(default=2.0, alias="SCRAPER_REQUESTS_PER_SECOND")
+    requests_per_second: float = Field(default=0.5, alias="SCRAPER_REQUESTS_PER_SECOND")
     max_concurrent_requests: int = Field(default=5, alias="SCRAPER_MAX_CONCURRENT_REQUESTS")
     request_timeout: int = Field(default=30, alias="SCRAPER_REQUEST_TIMEOUT")
 
