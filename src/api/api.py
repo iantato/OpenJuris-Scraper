@@ -36,7 +36,8 @@ from api.routers import (
     scraper_router,
     embedding_router,
     public_router,
-    export_router
+    export_router,
+    download_router
 )
 
 @asynccontextmanager
@@ -102,6 +103,7 @@ def create_app() -> FastAPI:
     app.include_router(embedding_router, prefix="/api/v1", dependencies=[Depends(verify_internal_api_key)])
     app.include_router(scraper_router, prefix="/api/v1", dependencies=[Depends(verify_internal_api_key)])
     app.include_router(export_router, prefix="/api/v1", dependencies=[Depends(verify_internal_api_key)])
+    app.include_router(download_router, prefix="/api/v1", dependencies=[Depends(verify_internal_api_key)])
 
     @app.get("/")
     async def root():

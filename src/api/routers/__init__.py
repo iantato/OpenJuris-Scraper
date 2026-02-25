@@ -6,6 +6,7 @@ from api.routers.scraper import router as scraper_router
 from api.routers.embedding import router as embedding_router
 from api.routers.public import router as public_router
 from api.routers.export import router as export_router
+from api.routers.download import router as download_router
 
 __all__ = [
     "documents_router",
@@ -16,4 +17,5 @@ __all__ = [
     "embedding_router",
     "public_router",
     "export_router",
+    "download_router",
 ]
