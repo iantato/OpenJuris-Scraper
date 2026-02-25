@@ -140,7 +140,7 @@ class ScraperService:
             from storage.repositories.vector import VectorRepository
             from uuid6 import uuid7
 
-            vector_repo = VectorRepository(self.session)
+            vector_repo = VectorRepository(self.session, self.embedder)
 
             # Embed the full content
             content = document.content_markdown or ""
