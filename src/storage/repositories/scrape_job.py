@@ -20,25 +20,25 @@ class ScrapeJobRepository(BaseRepository[ScrapeJob]):
         result = await self.session.execute(statement)
         return result.scalar_one_or_none()
 
-    async def get_pending_jobs(self, limit: int = 100) -> Sequence[ScrapeJob]:
-        """Get all pending scrape jobs."""
-        statement = (
+    async def get_pending_jobs(self, limit: int = 100) -> list[ScrapeJob]:
+        """Get pending scrape jobs."""
+        from enums.scraper_status import ScraperStatus
+        result = await self.session.execute(
             select(ScrapeJob)
             .where(ScrapeJob.status == ScraperStatus.PENDING)
             .limit(limit)
         )
-        result = await self.session.execute(statement)
-        return result.scalars().all()
+        return list(result.scalars().all())
 
-    async def get_failed_jobs(self, limit: int = 100) -> Sequence[ScrapeJob]:
-        """Get all failed scrape jobs for retry."""
-        statement = (
+    async def get_failed_jobs(self, limit: int = 100) -> list[ScrapeJob]:
+        """Get failed scrape jobs."""
+        from enums.scraper_status import ScraperStatus
+        result = await self.session.execute(
             select(ScrapeJob)
             .where(ScrapeJob.status == ScraperStatus.FAILED)
             .limit(limit)
         )
-        result = await self.session.execute(statement)
-        return result.scalars().all()
+        return list(result.scalars().all())
 
     async def mark_completed(self, job: ScrapeJob, document_id: Optional[str] = None) -> ScrapeJob:
         """Mark job as completed."""

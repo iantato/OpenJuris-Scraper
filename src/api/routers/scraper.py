@@ -126,7 +126,6 @@ async def _scrape_document_task(
                 session=session,
                 settings=settings,
                 embedder=embedder if embed_documents else None,
-                embedder_settings=settings,
             )
             job_repo = ScrapeJobRepository(session)
             doc_repo = DocumentRepository(session)
@@ -211,7 +210,6 @@ async def _crawl_source_task(
                         session=session,
                         settings=settings,
                         embedder=embedder if embed_documents else None,
-                        embedder_settings=settings,
                     )
 
                     document = await scraper_service.save_document(
@@ -261,10 +259,6 @@ async def scrape_document(
 ):
     """Queue a single document URL for scraping."""
     # Check if job already exists
-    existing_job = await service.job_repo.get_by_url(request_body.url)
-    if existing_job:
-        return ScrapeJobResponse.model_validate(existing_job)
-
     source_record = await service.source_repo.get_by_name(request_body.source)
     if not source_record:
         raise HTTPException(

@@ -105,7 +105,6 @@ async def get_scraper_service(
         session=session,
         settings=settings,
         embedder=embedder,
-        embedder_settings=settings,
     )
 
 async def verify_internal_api_key(x_api_key: str = Header(..., description="Internal API Key")):
